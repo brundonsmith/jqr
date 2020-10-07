@@ -24,13 +24,13 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 if let Some(s) = start {
                     if let Some(e) = end {
                         match val {
-                            JSONValue::Array(contents) => Box::new(contents.into_iter().skip(*s).take(*e - *s)),
+                            JSONValue::Array(contents) => Box::new(std::iter::once(JSONValue::Array(contents.into_iter().skip(*s).take(*e - *s).collect()))),
                             JSONValue::String(string) => Box::new(std::iter::once(JSONValue::String(&string[*s..*e]))),
                             _ => panic!(format!("Cannot get values of {}", val)),
                         }
                     } else {
                         match val {
-                            JSONValue::Array(contents) => Box::new(contents.into_iter().skip(*s)),
+                            JSONValue::Array(contents) => Box::new(std::iter::once(JSONValue::Array(contents.into_iter().skip(*s).collect()))),
                             JSONValue::String(string) => Box::new(std::iter::once(JSONValue::String(&string[*s..]))),
                             _ => panic!(format!("Cannot get values of {}", val)),
                         }
@@ -38,13 +38,13 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 } else {
                     if let Some(e) = end {
                         match val {
-                            JSONValue::Array(contents) => Box::new(contents.into_iter().take(*e)),
+                            JSONValue::Array(contents) => Box::new(std::iter::once(JSONValue::Array(contents.into_iter().take(*e).collect()))),
                             JSONValue::String(string) => Box::new(std::iter::once(JSONValue::String(&string[..*e]))),
                             _ => panic!(format!("Cannot get values of {}", val)),
                         }
                     } else {
                         match val {
-                            JSONValue::Array(contents) => Box::new(contents.into_iter()),
+                            JSONValue::Array(contents) => Box::new(std::iter::once(JSONValue::Array(contents.clone()))),
                             _ => panic!(format!("Cannot get values of {}", val)),
                         }
                     }
@@ -100,9 +100,9 @@ mod tests {
     #[test]
     fn test_1() {
         let filter = filter_parser::parse(".foo").unwrap();
-        let json = json_parser::parse("{ \"foo\": 12, \"bar\": \"hello\" }").unwrap();
+        let json = json_parser::parse("{ \"foo\": 12, \"bar\": \"hello\" }").map(|r| r.unwrap());
     
-        assert_eq!(apply_filter(&filter, std::iter::once(json)).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(12) ]);
+        assert_eq!(apply_filter(&filter, json).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(12) ]);
     }
     
     #[test]
@@ -114,9 +114,9 @@ mod tests {
             \"bar\": {
                 \"stuff\": false
             }
-        }").unwrap();
+        }").map(|r| r.unwrap());
     
-        assert_eq!(apply_filter(&filter, std::iter::once(json)).collect::<Vec<JSONValue>>(), vec![ JSONValue::Boolean(false) ]);
+        assert_eq!(apply_filter(&filter, json).collect::<Vec<JSONValue>>(), vec![ JSONValue::Boolean(false) ]);
     }
 
     #[test]
@@ -126,9 +126,9 @@ mod tests {
         { 
             \"foo\": 12, 
             \"bar\": [ 0, 1, 2 ]
-        }").unwrap();
+        }").map(|r| r.unwrap());
     
-        assert_eq!(apply_filter(&filter, std::iter::once(json)).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(1) ]);
+        assert_eq!(apply_filter(&filter, json).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(1) ]);
     }
     
     #[test]
@@ -138,9 +138,12 @@ mod tests {
         { 
             \"foo\": 12, 
             \"bar\": [ 0, 1, 2 ]
-        }").unwrap();
+        }").map(|r| r.unwrap());
     
-        assert_eq!(apply_filter(&filter, std::iter::once(json)).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(0), JSONValue::Integer(1), JSONValue::Integer(2) ]);
+        assert_eq!(
+            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
+            vec![ JSONValue::Integer(0), JSONValue::Integer(1), JSONValue::Integer(2) ]
+        );
     }
     
     #[test]
@@ -150,9 +153,12 @@ mod tests {
         { 
             \"foo\": 12, 
             \"bar\": [ 0, 1, 2 ]
-        }").unwrap();
+        }").map(|r| r.unwrap());
     
-        assert_eq!(apply_filter(&filter, std::iter::once(json)).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(1), JSONValue::Integer(2) ]);
+        assert_eq!(
+            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
+            vec![ JSONValue::Array(vec![ JSONValue::Integer(1), JSONValue::Integer(2) ]) ]
+        );
     }
     
     #[test]
@@ -162,9 +168,12 @@ mod tests {
         { 
             \"foo\": 12, 
             \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
-        }").unwrap();
+        }").map(|r| r.unwrap());
     
-        assert_eq!(apply_filter(&filter, std::iter::once(json)).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(2), JSONValue::Integer(3) ]);
+        assert_eq!(
+            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
+            vec![ JSONValue::Array(vec![ JSONValue::Integer(2), JSONValue::Integer(3) ]) ]
+        );
     }
     
     #[test]
@@ -174,8 +183,26 @@ mod tests {
         { 
             \"foo\": 12, 
             \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
-        }").unwrap();
+        }").map(|r| r.unwrap());
     
-        assert_eq!(apply_filter(&filter, std::iter::once(json)).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(0), JSONValue::Integer(1), JSONValue::Integer(2), JSONValue::Integer(3) ]);
+        assert_eq!(
+            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
+            vec![ JSONValue::Array(vec![ JSONValue::Integer(0), JSONValue::Integer(1), JSONValue::Integer(2), JSONValue::Integer(3) ]) ]
+        );
+    }
+    
+    #[test]
+    fn test_8() {
+        let filter = filter_parser::parse(".bar[4]").unwrap();
+        let json = json_parser::parse("
+        { 
+            \"foo\": 12, 
+            \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
+        }").map(|r| r.unwrap());
+    
+        assert_eq!(
+            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
+            vec![ JSONValue::Integer(0) ]
+        );
     }
 }
