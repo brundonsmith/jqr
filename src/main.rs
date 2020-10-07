@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::{fs::File, io::Read};
+
 use filters::apply_filter;
 use model::JSONValue;
 
@@ -10,7 +12,7 @@ mod json_parser;
 mod filter_parser;
 mod filters;
 
-fn main() {
+fn main() -> Result<(),()> {
     let matches = clap::App::new("jqr")
         .version("0.1")
         .author("Brandon Smith <mail@brandonsmith.ninja>")
@@ -21,46 +23,50 @@ fn main() {
                 .required(true)
                 .display_order(0),
         )
-        //     .arg(clap::Arg::with_name("path_pattern")
-        //         .short("p")
-        //         .long("path_pattern")
-        //         .value_name("PAT")
-        //         .help("A basic pattern string to filter which files will be searched. Asterisks ('*') will match any substring.")
-        //         .default_value("*")
-        //         .takes_value(true))
-        //     .arg(clap::Arg::with_name("line_delimiter")
-        //         .short("d")
-        //         .long("line_delimiter")
-        //         .value_name("CHAR")
-        //         .help("The character that delimits 'lines'. Can be used, for example, to search a natural-language file by passing '.' to split on sentences. [default: \\n]")
-        //         .takes_value(true))
-        //     .arg(clap::Arg::with_name("line_pattern")
-        //         .short("lp")
-        //         .long("line_pattern")
-        //         .value_name("PAT")
-        //         .help("A basic pattern string to filter which lines will show up in results. Asterisks ('*') will match any substring.")
-        //         .default_value("*")
-        //         .takes_value(true))
-        //     .arg(clap::Arg::with_name("trim_whitespace")
-        //         .short("t")
-        //         .long("trim_whitespace")
-        //         .help("Trim whitespace from the start and end of each line before comparing."))
-        //     .arg(clap::Arg::with_name("squash_chars")
-        //         .short("s")
-        //         .long("squash_chars")
-        //         .help("Characters that should be 'squashed' when processing a line. When a character is 'squashed', any continuous sequence of that character will be treated as a single instance. This cen be used to, for example, normalize indentation.")
-        //         .default_value("false")
-        //         .multiple(true))
+        .arg(
+            clap::Arg::with_name("JSON")
+                .help("File name or inlined JSON string")
+                .required(false)
+                .display_order(1),
+        )
+        .arg(
+            clap::Arg::with_name("kind")
+                .help("Type of input")
+                .required(false)
+                .display_order(1),
+        )
         .get_matches();
-    
-    let json_str = "";
-    let json_parsed = json_parser::parse(json_str).unwrap();
 
-    let filter_str = "";
+    let mut json_buffer = String::new();
+    let json_str = if matches.is_present("JSON") {
+        if matches.value_of("kind") == Some("inline") {
+            matches.value_of("JSON").unwrap()
+        } else {
+            let mut file = File::open(matches.value_of("JSON").unwrap()).map_err(|_| ())?;
+            file.read_to_string(&mut json_buffer).map_err(|_| ())?;
+
+            json_buffer.as_str()
+        }
+    } else {
+        let stdin = std::io::stdin();
+        let mut handle = stdin.lock();
+
+        handle.read_to_string(&mut json_buffer).map_err(|_| ())?;
+        
+        json_buffer.as_str()
+    };
+    
+    let json_parsed = json_parser::parse(json_str).map(|r| r.unwrap());
+
+    let filter_str = matches.value_of("PATTERN").unwrap();
     let filter_parsed = filter_parser::parse(filter_str).unwrap();
 
-    let filtered = apply_filter(&filter_parsed, vec![json_parsed].into_iter()).collect::<Vec<JSONValue>>();
+    let filtered = apply_filter(&filter_parsed, json_parsed);
 
-    println!("{:?}", &filtered);
+    for val in filtered {
+        println!("{}", val);
+    }
+
+    Ok(())
 }
 

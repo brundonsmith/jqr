@@ -4,9 +4,17 @@ use std::{collections::HashMap, fmt::Display};
 use crate::model::JSONValue;
 
 
-pub fn parse<'a>(code: &'a str) -> Result<JSONValue<'a>,ParseError> {
+pub fn parse<'a>(code: &'a str) -> impl Iterator<Item=Result<JSONValue<'a>,ParseError>> {
+    let tokens: Vec<Token> = tokenize(code).collect();
     let mut index = 0;
-    expression(&tokenize(code).collect(), &mut index)
+
+    std::iter::from_fn(move || {
+        if index < tokens.len() - 1 {
+            Some(expression(&tokens, &mut index))
+        } else {
+            None
+        }
+    })
 }
 
 #[derive(Debug,PartialEq)]
@@ -263,7 +271,10 @@ fn eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Result
 
 #[test]
 fn test_1() {
-    assert_eq!(parse("[1, 2, 3]"), Ok(JSONValue::Array(vec![ JSONValue::Integer(1), JSONValue::Integer(2), JSONValue::Integer(3) ])))
+    assert_eq!(
+        parse("[1, 2, 3]").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+        vec![ Ok(JSONValue::Array(vec![ JSONValue::Integer(1), JSONValue::Integer(2), JSONValue::Integer(3) ])) ]
+    )
 }
 
 #[test]
@@ -277,23 +288,43 @@ fn test_2() {
         JSONValue::String(""),
     ]));
 
-    println!("{}", &parse("{ 
-        \"foo\": [ 
-            1, 
-            2.3, 
-            false, 
-            null, 
-            \"\" 
-        ] 
-    }").unwrap());
+    assert_eq!(
+        parse("{ 
+            \"foo\": [ 
+                1, 
+                2.3, 
+                false, 
+                null, 
+                \"\" 
+            ] 
+        }").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+        vec![
+            Ok(JSONValue::Object(target_hashmap))
+        ]
+    )
+}
 
-    assert_eq!(parse("{ 
-        \"foo\": [ 
-            1, 
-            2.3, 
-            false, 
-            null, 
-            \"\" 
-        ] 
-    }"), Ok(JSONValue::Object(target_hashmap)))
+#[test]
+fn test_3() {
+    let mut map_1 = HashMap::new();
+    map_1.insert("foo", JSONValue::Integer(1));
+    
+    let mut map_2 = HashMap::new();
+    map_2.insert("foo", JSONValue::Integer(2));
+    
+    let mut map_3 = HashMap::new();
+    map_3.insert("foo", JSONValue::Integer(3));
+
+    assert_eq!(
+        parse("
+            { \"foo\": 1 }
+            { \"foo\": 2 }
+            { \"foo\": 3 }
+        ").collect::<Vec<Result<JSONValue,ParseError>>>(),
+        vec![
+            Ok(JSONValue::Object(map_1)),
+            Ok(JSONValue::Object(map_2)),
+            Ok(JSONValue::Object(map_3)),
+        ]
+    )
 }
