@@ -193,11 +193,11 @@ fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, P
 fn identifier_chain<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
     if try_eat(tokens, index, ".").is_ok() {
         if let Ok(first_identifier) = indexer(tokens, index) {
-            if try_eat(tokens, index, ".").is_ok() {
+            if tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("[")) || try_eat(tokens, index, ".").is_ok() {
                 if let Ok(second_identifier) = indexer(tokens, index) {
                     let mut path = vec![ first_identifier, second_identifier ];
 
-                    while try_eat(tokens, index, ".").is_ok() {
+                    while tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("[")) || try_eat(tokens, index, ".").is_ok() {
                         if let Ok(next) = indexer(tokens, index) {
                             path.push(next);
                         } else {
@@ -391,5 +391,13 @@ fn test_7() {
         Filter::Slice { start: Some(24), end: None },
         Filter::Slice { start: None, end: Some(763) },
         Filter::Slice { start: None, end: None },
+    ])));
+}
+
+#[test]
+fn test_8() {
+    assert_eq!(parse(".foo[2]"), Ok(Filter::Pipe(vec![
+        Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
+        Filter::ArrayIndex { index: 2 },
     ])));
 }

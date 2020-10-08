@@ -202,7 +202,7 @@ mod tests {
     
         assert_eq!(
             apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
-            vec![ JSONValue::Integer(0) ]
+            vec![ JSONValue::Integer(4) ]
         );
     }
 }
