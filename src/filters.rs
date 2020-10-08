@@ -92,117 +92,113 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 #[cfg(test)]
 mod tests {
 
-    use crate::{filter_parser, model::JSONValue};
+    use crate::filter_parser;
     use crate::json_parser;
 
     use super::apply_filter;
 
     #[test]
     fn test_1() {
-        let filter = filter_parser::parse(".foo").unwrap();
-        let json = json_parser::parse("{ \"foo\": 12, \"bar\": \"hello\" }").map(|r| r.unwrap());
-    
-        assert_eq!(apply_filter(&filter, json).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(12) ]);
+        test_filter(
+            "{ \"foo\": 12, \"bar\": \"hello\" }",
+            ".foo",
+            "12"
+        );
     }
     
     #[test]
     fn test_2() {
-        let filter = filter_parser::parse(".bar.stuff").unwrap();
-        let json = json_parser::parse("
-        { 
-            \"foo\": 12, 
-            \"bar\": {
-                \"stuff\": false
-            }
-        }").map(|r| r.unwrap());
-    
-        assert_eq!(apply_filter(&filter, json).collect::<Vec<JSONValue>>(), vec![ JSONValue::Boolean(false) ]);
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": {
+                    \"stuff\": false
+                }
+            }",
+            ".bar.stuff",
+            "false"
+        );
     }
 
     #[test]
     fn test_3() {
-        let filter = filter_parser::parse(".bar.[1]").unwrap();
-        let json = json_parser::parse("
-        { 
-            \"foo\": 12, 
-            \"bar\": [ 0, 1, 2 ]
-        }").map(|r| r.unwrap());
-    
-        assert_eq!(apply_filter(&filter, json).collect::<Vec<JSONValue>>(), vec![ JSONValue::Integer(1) ]);
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2 ]
+            }",
+            ".bar.[1]",
+            "1"
+        );
     }
     
     #[test]
     fn test_4() {
-        let filter = filter_parser::parse(".bar.[]").unwrap();
-        let json = json_parser::parse("
-        { 
-            \"foo\": 12, 
-            \"bar\": [ 0, 1, 2 ]
-        }").map(|r| r.unwrap());
-    
-        assert_eq!(
-            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
-            vec![ JSONValue::Integer(0), JSONValue::Integer(1), JSONValue::Integer(2) ]
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2 ]
+            }",
+            ".bar.[]",
+            "0 1 2"
         );
     }
     
     #[test]
     fn test_5() {
-        let filter = filter_parser::parse(".bar.[1:]").unwrap();
-        let json = json_parser::parse("
-        { 
-            \"foo\": 12, 
-            \"bar\": [ 0, 1, 2 ]
-        }").map(|r| r.unwrap());
-    
-        assert_eq!(
-            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
-            vec![ JSONValue::Array(vec![ JSONValue::Integer(1), JSONValue::Integer(2) ]) ]
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2 ]
+            }",
+            ".bar[1:]",
+            "[1, 2]"
         );
     }
     
     #[test]
     fn test_6() {
-        let filter = filter_parser::parse(".bar.[2:4]").unwrap();
-        let json = json_parser::parse("
-        { 
-            \"foo\": 12, 
-            \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
-        }").map(|r| r.unwrap());
-    
-        assert_eq!(
-            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
-            vec![ JSONValue::Array(vec![ JSONValue::Integer(2), JSONValue::Integer(3) ]) ]
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
+            }",
+            ".bar[2:4]",
+            "[2, 3]"
         );
     }
     
     #[test]
     fn test_7() {
-        let filter = filter_parser::parse(".bar.[:4]").unwrap();
-        let json = json_parser::parse("
-        { 
-            \"foo\": 12, 
-            \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
-        }").map(|r| r.unwrap());
-    
-        assert_eq!(
-            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
-            vec![ JSONValue::Array(vec![ JSONValue::Integer(0), JSONValue::Integer(1), JSONValue::Integer(2), JSONValue::Integer(3) ]) ]
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
+            }",
+            ".bar[:4]",
+            "[0, 1, 2, 3]"
         );
     }
     
     #[test]
     fn test_8() {
-        let filter = filter_parser::parse(".bar[4]").unwrap();
-        let json = json_parser::parse("
-        { 
-            \"foo\": 12, 
-            \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
-        }").map(|r| r.unwrap());
-    
-        assert_eq!(
-            apply_filter(&filter, json).collect::<Vec<JSONValue>>(), 
-            vec![ JSONValue::Integer(4) ]
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
+            }",
+            ".bar[4]",
+            "4"
         );
+    }
+
+    fn test_filter(input_json: &str, filter: &str, output_json: &str) {
+        let input = json_parser::parse(input_json).map(|r| r.unwrap());
+        let filter = filter_parser::parse(filter).unwrap();
+        let expected = json_parser::parse(output_json).map(|r| r.unwrap());
+
+        apply_filter(&filter, input).zip(expected).for_each(|(i, o)| {
+            assert_eq!(i, o)
+        });
     }
 }
