@@ -12,6 +12,20 @@ pub enum JSONValue<'a> {
     Null,
 }
 
+impl<'a> JSONValue<'a> {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            JSONValue::Object(_) => "object",
+            JSONValue::Array(_) => "array",
+            JSONValue::String(_) => "string",
+            JSONValue::Integer(_) => "number",
+            JSONValue::Float(_) => "float",
+            JSONValue::Boolean(_) => "boolean",
+            JSONValue::Null => "null",
+        }
+    }
+}
+
 impl<'a> Display for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt_inner(self, 0, f)
