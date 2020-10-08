@@ -142,7 +142,7 @@ fn match_pred<F: Fn(char) -> bool>(code: &str, pred: F) -> usize {
         .unwrap_or(0)
 }
 
-const SPECIAL_TOKENS: [&str; 9] = ["{", "}", "[", "]", ",", "|", ":", ".", "?"];
+const SPECIAL_TOKENS: [&str; 16] = ["{", "}", "[", "]", "(", ")", ",", "|", ":", ".", "?", "+", "-", "*", "/", "%"];
 
 
 
@@ -218,6 +218,35 @@ fn identifier_chain<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
         }
     }
 
+    return function(tokens, index);
+}
+
+fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+    if let Some(FilterLexeme::Identifier(func)) = tokens.get(*index).map(|t| &t.lexeme) {
+        *index += 1;
+
+        return match *func {
+            "length" => Ok(Filter::Length),
+            "keys" => Ok(Filter::Keys),
+            "keys_unsorted" => Ok(Filter::KeysUnsorted),
+            _ => {
+                try_eat(tokens, index, "(")?;
+
+                let inner = Box::new(filter(tokens, index)?);
+
+                try_eat(tokens, index, ")")?;
+
+                match *func {
+                    "map" => Ok(Filter::Map(inner)),
+                    _ => Err(ParseError {
+                        token: tokens.get(*index - 1).cloned(),
+                        msg: format!("Function '{}' is unknown", func),
+                    })
+                }
+            }
+        }
+    }
+
     return json_literal(tokens, index);
 }
 
@@ -244,7 +273,7 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>,
             Some(Token { lexeme: FilterLexeme::Identifier(s), column: _, line_number: _ }) => {
                 *index += 1;
 
-                Ok(Filter::ObjectIdentifierIndex { 
+                Ok(Filter::ObjectIdentifierIndex {
                     identifier: s,
                     optional: try_eat(tokens, index, "?").is_ok()
                 })
@@ -335,69 +364,85 @@ fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Re
 }
 
 
-#[test]
-fn test_1() {
-    assert_eq!(parse(".foo"), Ok(Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }));
-}
+#[cfg(test)]
+mod tests {
+    use crate::model::Filter;
+    use crate::filter_parser::parse;
 
-#[test]
-fn test_2() {
-    assert_eq!(parse(".foo.bar"), Ok(Filter::Pipe(vec![ 
-        Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
-        Filter::ObjectIdentifierIndex { identifier: "bar", optional: false } 
-    ])));
-}
+    use super::{FilterLexeme, Token, tokenize};
 
-#[test]
-fn test_3() {
-    assert_eq!(parse(".foo.[]"), Ok(Filter::Pipe(vec![ 
-        Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
-        Filter::AllValues,
-    ])));
-}
+    #[test]
+    fn test_1() {
+        assert_eq!(parse(".foo"), Ok(Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }));
+    }
 
-#[test]
-fn test_4() {
-    assert_eq!(parse(".foo?.bar.blah"), Ok(Filter::Pipe(vec![ 
-        Filter::ObjectIdentifierIndex { identifier: "foo", optional: true }, 
-        Filter::ObjectIdentifierIndex { identifier: "bar", optional: false }, 
-        Filter::ObjectIdentifierIndex { identifier: "blah", optional: false }, 
-    ])));
-}
+    #[test]
+    fn test_2() {
+        assert_eq!(parse(".foo.bar"), Ok(Filter::Pipe(vec![ 
+            Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
+            Filter::ObjectIdentifierIndex { identifier: "bar", optional: false } 
+        ])));
+    }
 
-#[test]
-fn test_5() {
-    assert_eq!(parse(".a | . | .b"), Ok(Filter::Pipe(vec![ 
-        Filter::ObjectIdentifierIndex { identifier: "a", optional: false }, 
-        Filter::Identity, 
-        Filter::ObjectIdentifierIndex { identifier: "b", optional: false }, 
-    ])));
-}
+    #[test]
+    fn test_3() {
+        assert_eq!(parse(".foo.[]"), Ok(Filter::Pipe(vec![ 
+            Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
+            Filter::AllValues,
+        ])));
+    }
 
-#[test]
-fn test_6() {
-    assert_eq!(parse(". , .[] , .b"), Ok(Filter::Comma(vec![ 
-        Filter::Identity, 
-        Filter::AllValues, 
-        Filter::ObjectIdentifierIndex { identifier: "b", optional: false }, 
-    ])));
-}
+    #[test]
+    fn test_4() {
+        assert_eq!(parse(".foo?.bar.blah"), Ok(Filter::Pipe(vec![ 
+            Filter::ObjectIdentifierIndex { identifier: "foo", optional: true }, 
+            Filter::ObjectIdentifierIndex { identifier: "bar", optional: false }, 
+            Filter::ObjectIdentifierIndex { identifier: "blah", optional: false }, 
+        ])));
+    }
 
-#[test]
-fn test_7() {
-    assert_eq!(parse(".[12] , .[1:5] , .[24:], .[:763], .[:]"), Ok(Filter::Comma(vec![
-        Filter::ArrayIndex { index: 12 },
-        Filter::Slice { start: Some(1), end: Some(5) },
-        Filter::Slice { start: Some(24), end: None },
-        Filter::Slice { start: None, end: Some(763) },
-        Filter::Slice { start: None, end: None },
-    ])));
-}
+    #[test]
+    fn test_5() {
+        assert_eq!(parse(".a | . | .b"), Ok(Filter::Pipe(vec![ 
+            Filter::ObjectIdentifierIndex { identifier: "a", optional: false }, 
+            Filter::Identity, 
+            Filter::ObjectIdentifierIndex { identifier: "b", optional: false }, 
+        ])));
+    }
 
-#[test]
-fn test_8() {
-    assert_eq!(parse(".foo[2]"), Ok(Filter::Pipe(vec![
-        Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
-        Filter::ArrayIndex { index: 2 },
-    ])));
+    #[test]
+    fn test_6() {
+        assert_eq!(parse(". , .[] , .b"), Ok(Filter::Comma(vec![ 
+            Filter::Identity, 
+            Filter::AllValues, 
+            Filter::ObjectIdentifierIndex { identifier: "b", optional: false }, 
+        ])));
+    }
+
+    #[test]
+    fn test_7() {
+        assert_eq!(parse(".[12] , .[1:5] , .[24:], .[:763], .[:]"), Ok(Filter::Comma(vec![
+            Filter::ArrayIndex { index: 12 },
+            Filter::Slice { start: Some(1), end: Some(5) },
+            Filter::Slice { start: Some(24), end: None },
+            Filter::Slice { start: None, end: Some(763) },
+            Filter::Slice { start: None, end: None },
+        ])));
+    }
+
+    #[test]
+    fn test_8() {
+        assert_eq!(parse(".foo[2]"), Ok(Filter::Pipe(vec![
+            Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
+            Filter::ArrayIndex { index: 2 },
+        ])));
+    }
+    
+    #[test]
+    fn test_9() {
+        assert_eq!(
+            parse("map(.foo)"), 
+            Ok(Filter::Map(Box::new(Filter::ObjectIdentifierIndex { identifier: "foo", optional: false })))
+        );
+    }
 }

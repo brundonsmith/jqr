@@ -141,6 +141,13 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
             return Box::new(unsorted_keys.into_iter());
         },
         Filter::KeysUnsorted => Box::new(values.map(keys).flatten()),
+        Filter::Map(pred) => Box::new(values.map(move |val| {
+            match val {
+                JSONValue::Array(arr) => 
+                    JSONValue::Array(arr.into_iter().map(|v| apply_filter(pred, std::iter::once(v))).flatten().collect()),
+                _ => panic!(format!("Cannot map over a value of type {}", val.type_name()))
+            }
+        }))
     }
 }
 
@@ -442,6 +449,28 @@ mod tests {
             "\"cd\""
         );
     }
+
+    #[test]
+    fn test_10() {
+        test_filter(
+            "[
+                { \"foo\": 1 },
+                { \"foo\": 2 },
+                { \"foo\": 3 }
+            ]",
+            "map(.foo)",
+            "[1, 2, 3]"
+        );
+    }
+
+    // #[test]
+    // fn test_11() {
+    //     test_filter(
+    //         "[1, 2, 3]",
+    //         "map(.+1)",
+    //         "[2, 3, 4]"
+    //     );
+    // }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
         let input = json_parser::parse(input_json).map(|r| r.unwrap());

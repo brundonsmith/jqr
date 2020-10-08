@@ -125,4 +125,5 @@ pub enum Filter<'a> {
     Length,
     Keys,
     KeysUnsorted,
+    Map(Box<Filter<'a>>),
 }
