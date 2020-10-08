@@ -9,7 +9,7 @@ pub fn parse<'a>(code: &'a str) -> impl Iterator<Item=Result<JSONValue<'a>,Parse
     let mut index = 0;
 
     std::iter::from_fn(move || {
-        if index < tokens.len() - 1 {
+        if index < tokens.len() {
             Some(expression(&tokens, &mut index))
         } else {
             None
@@ -73,6 +73,19 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
             return None;
         }
 
+        // strings
+        if ch == '"' {
+            let content_length = match_pred(&code[index + 1..], |c| c != '"');
+            let string_end_index = index + 1 + content_length;
+            skip_to = Some(string_end_index + 1);
+            let string_content = &code[index + 1..string_end_index];
+            return Some(Token { 
+                line_number, 
+                column: index - line_start, 
+                lexeme: JSONLexeme::String(string_content) 
+            });
+        }
+
         // special tokens
         for special in &SPECIAL_TOKENS {
             if match_front(&code[index..], special) {
@@ -96,20 +109,6 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
             return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Null });
         }
 
-        // strings
-        if ch == '"' {
-            let content_length = match_pred(&code[index + 1..], |c| c != '"');
-            let string_end_index = index + content_length + 1;
-
-            skip_to = Some(string_end_index + 1);
-            let string_content = &code[index + 1..string_end_index];
-            return Some(Token { 
-                line_number, 
-                column: index - line_start, 
-                lexeme: JSONLexeme::String(string_content) 
-            });
-        }
-
         // comments
         // if ch == ';' && code[index+1..].chars().next().map_or(false, |c| c == ';') {
         //   let comment_end = index + 2 + match_pred(&code[index+2..], |c| c != '\n').unwrap_or(0);
@@ -121,7 +120,6 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
         // numbers
         if ch.is_numeric() {
             let front_end = index + match_pred(&code[index..], |c| c.is_numeric());
-
             let column = index - line_start;
 
             if front_end < code.len() - 1 && &code[front_end..front_end + 1] == "." {
@@ -164,27 +162,36 @@ fn match_pred<F: Fn(char) -> bool>(code: &str, pred: F) -> usize {
     code.char_indices()
         .take_while(|(_, c)| pred(*c))
         .last()
-        .map(|(index, _)| index + 1)
+        .map(|(index, ch)| index + ch.len_utf8())
         .unwrap_or(0)
 }
 
-#[test]
-fn match_pred_test_1() {
-    assert_eq!(match_pred("foobar", |c| c != 'b'), 3);
-}
-#[test]
-fn match_pred_test_2() {
-    assert_eq!(match_pred("foobar", |c| c != 'f'), 0);
+#[cfg(test)]
+mod match_pred_tests {
+    use super::match_pred;
+
+    #[test]
+    fn test_1() {
+        assert_eq!(match_pred("foobar", |c| c != 'b'), 3);
+    }
+    #[test]
+    fn test_2() {
+        assert_eq!(match_pred("foobar", |c| c != 'f'), 0);
+    }
+
+    #[test]
+    fn test_3() {
+        assert_eq!(match_pred("フシギダネ\"", |c| c != '"'), 15);
+    }
+
+    #[test]
+    fn test_4() {
+        assert_eq!(match_pred("12", |c| c.is_numeric()), 2);
+    }
 }
 
 const SPECIAL_TOKENS: [&str; 6] = ["{", "}", "[", "]", ",", ":"];
 
-#[test]
-fn tokenize_test() {
-    for token in tokenize("{ \"foo\": [ 1, 2.3, false, null, \"\" ] }") {
-        println!("{:?}", &token);
-    }
-}
 
 fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
     let next = &tokens[*index];
@@ -269,62 +276,80 @@ fn eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Result
     }
 }
 
-#[test]
-fn test_1() {
-    assert_eq!(
-        parse("[1, 2, 3]").collect::<Vec<Result<JSONValue,ParseError>>>(), 
-        vec![ Ok(JSONValue::Array(vec![ JSONValue::Integer(1), JSONValue::Integer(2), JSONValue::Integer(3) ])) ]
-    )
-}
+#[cfg(test)]
+mod parser_tests {
+        use std::collections::HashMap;
 
-#[test]
-fn test_2() {
-    let mut target_hashmap = HashMap::new();
-    target_hashmap.insert("foo", JSONValue::Array(vec![
-        JSONValue::Integer(1),
-        JSONValue::Float(2.3),
-        JSONValue::Boolean(false),
-        JSONValue::Null,
-        JSONValue::String(""),
-    ]));
+use crate::model::JSONValue;
+    use super::{ParseError, Token, parse, tokenize};
 
-    assert_eq!(
-        parse("{ 
-            \"foo\": [ 
-                1, 
-                2.3, 
-                false, 
-                null, 
-                \"\" 
-            ] 
-        }").collect::<Vec<Result<JSONValue,ParseError>>>(), 
-        vec![
-            Ok(JSONValue::Object(target_hashmap))
-        ]
-    )
-}
+    #[test]
+    fn test_1() {
+        assert_eq!(
+            parse("[1, 2, 3]").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![ Ok(JSONValue::Array(vec![ JSONValue::Integer(1), JSONValue::Integer(2), JSONValue::Integer(3) ])) ]
+        )
+    }
 
-#[test]
-fn test_3() {
-    let mut map_1 = HashMap::new();
-    map_1.insert("foo", JSONValue::Integer(1));
-    
-    let mut map_2 = HashMap::new();
-    map_2.insert("foo", JSONValue::Integer(2));
-    
-    let mut map_3 = HashMap::new();
-    map_3.insert("foo", JSONValue::Integer(3));
+    #[test]
+    fn test_2() {
+        let mut target_hashmap = HashMap::new();
+        target_hashmap.insert("foo", JSONValue::Array(vec![
+            JSONValue::Integer(1),
+            JSONValue::Float(2.3),
+            JSONValue::Boolean(false),
+            JSONValue::Null,
+            JSONValue::String(""),
+        ]));
 
-    assert_eq!(
-        parse("
-            { \"foo\": 1 }
-            { \"foo\": 2 }
-            { \"foo\": 3 }
-        ").collect::<Vec<Result<JSONValue,ParseError>>>(),
-        vec![
-            Ok(JSONValue::Object(map_1)),
-            Ok(JSONValue::Object(map_2)),
-            Ok(JSONValue::Object(map_3)),
-        ]
-    )
+        assert_eq!(
+            parse("{ 
+                \"foo\": [ 
+                    1, 
+                    2.3, 
+                    false, 
+                    null, 
+                    \"\" 
+                ] 
+            }").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![
+                Ok(JSONValue::Object(target_hashmap))
+            ]
+        )
+    }
+
+    #[test]
+    fn test_3() {
+        let mut map_1 = HashMap::new();
+        map_1.insert("foo", JSONValue::Integer(1));
+        
+        let mut map_2 = HashMap::new();
+        map_2.insert("foo", JSONValue::Integer(2));
+        
+        let mut map_3 = HashMap::new();
+        map_3.insert("foo", JSONValue::Integer(3));
+
+        assert_eq!(
+            parse("
+                { \"foo\": 1 }
+                { \"foo\": 2 }
+                { \"foo\": 3 }
+            ").collect::<Vec<Result<JSONValue,ParseError>>>(),
+            vec![
+                Ok(JSONValue::Object(map_1)),
+                Ok(JSONValue::Object(map_2)),
+                Ok(JSONValue::Object(map_3)),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_4() {
+        assert_eq!(
+            parse("12").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![
+                Ok(JSONValue::Integer(12))
+            ]
+        )
+    }
 }
