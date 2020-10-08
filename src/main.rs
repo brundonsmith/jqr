@@ -3,7 +3,6 @@
 use std::{fs::File, io::Read};
 
 use filters::apply_filter;
-use model::JSONValue;
 
 extern crate clap;
 
@@ -33,19 +32,23 @@ fn main() -> Result<(),()> {
             clap::Arg::with_name("kind")
                 .help("Type of input")
                 .required(false)
-                .display_order(1),
+                .display_order(0)
+                .default_value("file")
+                .possible_values(&["file", "inline"]),
         )
         .get_matches();
 
     let mut json_buffer = String::new();
     let json_str = if matches.is_present("JSON") {
-        if matches.value_of("kind") == Some("inline") {
-            matches.value_of("JSON").unwrap()
-        } else {
-            let mut file = File::open(matches.value_of("JSON").unwrap()).map_err(|_| ())?;
-            file.read_to_string(&mut json_buffer).map_err(|_| ())?;
-
-            json_buffer.as_str()
+        match matches.value_of("kind").unwrap() {
+            "file" => {
+                let mut file = File::open(matches.value_of("JSON").unwrap()).map_err(|_| ())?;
+                file.read_to_string(&mut json_buffer).map_err(|_| ())?;
+    
+                json_buffer.as_str()
+            },
+            "inline" => matches.value_of("JSON").unwrap(),
+            _ => unreachable!()
         }
     } else {
         let stdin = std::io::stdin();
