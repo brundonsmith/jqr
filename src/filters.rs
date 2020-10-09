@@ -1,4 +1,4 @@
-use crate::model::{Filter, JSONValue};
+use crate::model::{Filter, JSONValue, StrOrString};
 
 
 pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=JSONValue<'a>>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
@@ -7,7 +7,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::ObjectIdentifierIndex { identifier, optional } => 
             Box::new(values.map(move |val| -> JSONValue<'a> {
                 if let JSONValue::Object(contents) = val {
-                    return contents.get(identifier).unwrap().clone();
+                    return contents.get(&StrOrString::Str(identifier)).unwrap().clone();
                 } else if *optional && val == JSONValue::Null {
                     return JSONValue::Null;
                 } else {
@@ -178,7 +178,10 @@ fn combinations<'a>(a: impl Iterator<Item=JSONValue<'a>>, b: impl Iterator<Item=
 
 fn keys<'a>(val: JSONValue<'a>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
     if let JSONValue::Object(map) = val {
-        return Box::new(map.into_iter().map(|(key, _)| JSONValue::String(key)));
+        return Box::new(map.into_iter().map(|(key, _)| match key {
+            StrOrString::Str(s) => JSONValue::String(s),
+            StrOrString::String(s) => JSONValue::AllocatedString(s)
+        }));
     }
     
     if let JSONValue::Array(arr) = val {

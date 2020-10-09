@@ -1,12 +1,16 @@
 
 use std::{collections::HashMap, fmt::Display};
 
-use crate::model::JSONValue;
+use crate::model::{JSONValue, StrOrString};
 
 
 pub fn parse<'a>(code: &'a str) -> impl Iterator<Item=Result<JSONValue<'a>,ParseError>> {
     let tokens: Vec<Token> = tokenize(code).collect();
     let mut index = 0;
+
+    // for t in &tokens {
+    //     println!("{:?}", t);
+    // }
 
     std::iter::from_fn(move || {
         if index < tokens.len() {
@@ -241,18 +245,54 @@ fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
 fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
     let mut contents = HashMap::new();
 
-    if let Ok(JSONValue::String(prop)) = expression(tokens, index) {
+    let first_key = expression(tokens, index);
+
+    // TODO: consolidate
+    if let Ok(JSONValue::String(prop)) = first_key {
         eat(tokens, index, ":")?;
         let value = expression(tokens, index)?;
 
-        contents.insert(prop, value);
+        contents.insert(StrOrString::Str(prop), value);
 
         while let Ok(_) = eat(tokens, index, ",") {
-            if let Ok(JSONValue::String(prop)) = expression(tokens, index) {
+            let key = expression(tokens, index);
+
+            if let Ok(JSONValue::String(prop)) = key {
                 eat(tokens, index, ":")?;
                 let value = expression(tokens, index)?;
 
-                contents.insert(prop, value);
+                contents.insert(StrOrString::Str(prop), value);
+            } else if let Ok(JSONValue::AllocatedString(prop)) = key {
+                eat(tokens, index, ":")?;
+                let value = expression(tokens, index)?;
+
+                contents.insert(StrOrString::String(prop), value);
+            } else {
+                return Err(ParseError {
+                    msg: String::from("Expected object property after ','"),
+                    token: tokens[*index].clone(),
+                });
+            }
+        }
+    } else if let Ok(JSONValue::AllocatedString(prop)) = first_key {
+        eat(tokens, index, ":")?;
+        let value = expression(tokens, index)?;
+
+        contents.insert(StrOrString::String(prop), value);
+
+        while let Ok(_) = eat(tokens, index, ",") {
+            let key = expression(tokens, index);
+
+            if let Ok(JSONValue::String(prop)) = key {
+                eat(tokens, index, ":")?;
+                let value = expression(tokens, index)?;
+
+                contents.insert(StrOrString::Str(prop), value);
+            } else if let Ok(JSONValue::AllocatedString(prop)) = key {
+                eat(tokens, index, ":")?;
+                let value = expression(tokens, index)?;
+
+                contents.insert(StrOrString::String(prop), value);
             } else {
                 return Err(ParseError {
                     msg: String::from("Expected object property after ','"),
@@ -297,7 +337,7 @@ fn eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Result
             *index += 1;
             Ok(())
         } else {
-            return Err(ParseError { msg: format!("Expected '{}', found {}", expected, found), token: tokens[*index].clone() });
+            return Err(ParseError { msg: format!("Expected '{}', found '{}'", expected, found), token: tokens[*index].clone() });
         }
     } else {
         return Err(ParseError { msg: format!("Expected '{}'", expected), token: tokens[*index].clone() });
@@ -308,7 +348,7 @@ fn eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Result
 mod parser_tests {
         use std::collections::HashMap;
 
-use crate::model::JSONValue;
+use crate::model::{JSONValue, StrOrString};
     use super::{ParseError, Token, parse, tokenize};
 
     #[test]
@@ -322,7 +362,7 @@ use crate::model::JSONValue;
     #[test]
     fn test_2() {
         let mut target_hashmap = HashMap::new();
-        target_hashmap.insert("foo", JSONValue::Array(vec![
+        target_hashmap.insert(StrOrString::Str("foo"), JSONValue::Array(vec![
             JSONValue::Integer(1),
             JSONValue::Float(2.3),
             JSONValue::Boolean(false),
@@ -349,13 +389,13 @@ use crate::model::JSONValue;
     #[test]
     fn test_3() {
         let mut map_1 = HashMap::new();
-        map_1.insert("foo", JSONValue::Integer(1));
+        map_1.insert(StrOrString::Str("foo"), JSONValue::Integer(1));
         
         let mut map_2 = HashMap::new();
-        map_2.insert("foo", JSONValue::Integer(2));
+        map_2.insert(StrOrString::Str("foo"), JSONValue::Integer(2));
         
         let mut map_3 = HashMap::new();
-        map_3.insert("foo", JSONValue::Integer(3));
+        map_3.insert(StrOrString::Str("foo"), JSONValue::Integer(3));
 
         assert_eq!(
             parse("

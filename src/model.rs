@@ -1,9 +1,15 @@
 
 use std::{collections::HashMap, fmt::Display};
 
+#[derive(Debug,Clone,PartialEq,Eq,Hash)]
+pub enum StrOrString<'a> {
+    Str(&'a str),
+    String(String),
+}
+
 #[derive(Debug,Clone)]
 pub enum JSONValue<'a> {
-    Object(HashMap<&'a str, JSONValue<'a>>),
+    Object(HashMap<StrOrString<'a>, JSONValue<'a>>),
     Array(Vec<JSONValue<'a>>),
     String(&'a str),
     AllocatedString(String),
@@ -72,7 +78,10 @@ fn fmt_inner<'a>(val: &JSONValue<'a>, indentation: i32, f: &mut std::fmt::Format
                 write_newline_and_indentation(f, indentation + 1)?;
 
                 f.write_str("\"")?;
-                f.write_str(key)?;
+                f.write_str(match key {
+                    StrOrString::Str(s) => s,
+                    StrOrString::String(s) => s,
+                })?;
                 f.write_str("\"")?;
                 f.write_str(": ")?;
                 fmt_inner(value, indentation + 1, f)?;
