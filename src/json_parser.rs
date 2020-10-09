@@ -23,13 +23,9 @@ pub struct ParseError<'a> {
     pub token: Token<'a>,
 }
 
-// impl<'a> Display for ParseError<'a> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.write_str(&format!("ERROR {}:{}, {}", self.token.line_number, self.token.column, self.msg))
-//     }
-// }
 
 
+// tokenizing 
 #[derive(Debug,Clone,PartialEq)]
 pub struct Token<'a> {
     pub index: usize,
@@ -164,38 +160,6 @@ fn match_front(code: &str, segment: &str) -> bool {
     segment.chars().zip(code.chars()).all(|(a, b)| a == b)
 }
 
-// fn match_pred<F: Fn(char) -> bool>(code: &str, pred: F) -> usize {
-//     code.char_indices()
-//         .take_while(|(_, c)| pred(*c))
-//         .last()
-//         .map(|(index, ch)| index + ch.len_utf8())
-//         .unwrap_or(0)
-// }
-
-// #[cfg(test)]
-// mod match_pred_tests {
-//     use super::match_pred;
-
-//     #[test]
-//     fn test_1() {
-//         assert_eq!(match_pred("foobar", |c| c != 'b'), 3);
-//     }
-//     #[test]
-//     fn test_2() {
-//         assert_eq!(match_pred("foobar", |c| c != 'f'), 0);
-//     }
-
-//     #[test]
-//     fn test_3() {
-//         assert_eq!(match_pred("フシギダネ\"", |c| c != '"'), 15);
-//     }
-
-//     #[test]
-//     fn test_4() {
-//         assert_eq!(match_pred("12", |c| c.is_numeric()), 2);
-//     }
-// }
-
 const SPECIAL_TOKENS: [char; 6] = ['{', '}', '[', ']', ',', ':'];
 const TRUE_TOKEN: &str = "true";
 const TRUE_TOKE_LEN: usize = TRUE_TOKEN.len();
@@ -204,6 +168,8 @@ const FALSE_TOKE_LEN: usize = FALSE_TOKEN.len();
 const NULL_TOKEN: &str = "null";
 const NULL_TOKE_LEN: usize = NULL_TOKEN.len();
 
+
+// parsing
 fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
     let next = &tokens[*index];
     *index += 1;
@@ -267,8 +233,6 @@ fn consume_str_or_string<'a>(next: Result<JSONValue<'a>, ParseError>) -> Option<
     }
 }
 
-// fn _
-
 fn array_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
     if try_eat(tokens, index, &']').is_ok() {
         return Ok(JSONValue::Array(vec![]));
@@ -279,7 +243,7 @@ fn array_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
     if let Ok(value) = expression(tokens, index) {
         contents.push(value);
 
-        while let Ok(_) = try_eat(tokens, index, &',') {
+        while try_eat(tokens, index, &',').is_ok() {
             let value = expression(tokens, index)?;
             contents.push(value);
         }
@@ -313,9 +277,8 @@ fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &char) -> R
 
 #[cfg(test)]
 mod parser_tests {
-        use std::collections::HashMap;
-
-use crate::model::{JSONValue, StrOrString};
+    use std::collections::HashMap;
+    use crate::model::{JSONValue, StrOrString};
     use super::{ParseError, parse};
 
     #[test]
