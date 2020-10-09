@@ -8,10 +8,6 @@ pub fn parse<'a>(code: &'a str) -> impl Iterator<Item=Result<JSONValue<'a>,Parse
     let tokens: Vec<Token> = tokenize(code).collect();
     let mut index = 0;
 
-    // for t in &tokens {
-    //     println!("{:?}", t);
-    // }
-
     std::iter::from_fn(move || {
         if index < tokens.len() {
             Some(expression(&tokens, &mut index))
@@ -48,8 +44,7 @@ pub enum JSONLexeme<'a> {
     AllocatedString(String),
     Integer(i32),
     Float(f32),
-    True,
-    False,
+    Boolean(bool),
     Null
 }
 
@@ -127,26 +122,18 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
 
         if match_front(&code[index..], "true") {
             skip_to = Some(index + "true".len());
-            return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::True });
+            return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Boolean(true) });
         }
 
         if match_front(&code[index..], "false") {
             skip_to = Some(index + "false".len());
-            return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::False });
+            return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Boolean(false) });
         }
 
         if match_front(&code[index..], "null") {
             skip_to = Some(index + "null".len());
             return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Null });
         }
-
-        // comments
-        // if ch == ';' && code[index+1..].chars().next().map_or(false, |c| c == ';') {
-        //   let comment_end = index + 2 + match_pred(&code[index+2..], |c| c != '\n').unwrap_or(0);
-
-        //   skip_to = Some(comment_end + 1);
-        //   return None;
-        // }
 
         // numbers
         if ch.is_numeric() {
@@ -233,8 +220,7 @@ fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
         JSONLexeme::AllocatedString(s) => Ok(JSONValue::AllocatedString(s.clone())),
         JSONLexeme::Integer(n) => Ok(JSONValue::Integer(*n)),
         JSONLexeme::Float(n) => Ok(JSONValue::Float(*n)),
-        JSONLexeme::True => Ok(JSONValue::Boolean(true)),
-        JSONLexeme::False => Ok(JSONValue::Boolean(false)),
+        JSONLexeme::Boolean(b) => Ok(JSONValue::Boolean(*b)),
         JSONLexeme::Null => Ok(JSONValue::Null),
         JSONLexeme::Special("{") => object_body(tokens, index),
         JSONLexeme::Special("[") => array_body(tokens, index),
