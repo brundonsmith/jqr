@@ -243,6 +243,10 @@ fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
 }
 
 fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
+    if eat(tokens, index, "}").is_ok() {
+        return Ok(JSONValue::Object(HashMap::new()));
+    }
+
     let mut contents = HashMap::new();
 
     let first_key = expression(tokens, index);
@@ -307,6 +311,10 @@ fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONVal
 }
 
 fn array_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
+    if eat(tokens, index, "]").is_ok() {
+        return Ok(JSONValue::Array(vec![]));
+    }
+
     let mut contents = Vec::new();
 
     if let Ok(value) = expression(tokens, index) {
@@ -437,6 +445,26 @@ use crate::model::{JSONValue, StrOrString};
             parse("\"hello \\\\ \\\"world\\\"\"").collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
                 Ok(JSONValue::AllocatedString(String::from("hello \\ \"world\"")))
+            ]
+        )
+    }
+
+    #[test]
+    fn test_7() {
+        assert_eq!(
+            parse("{}").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![
+                Ok(JSONValue::Object(HashMap::new()))
+            ]
+        )
+    }
+
+    #[test]
+    fn test_8() {
+        assert_eq!(
+            parse("[]").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![
+                Ok(JSONValue::Array(vec![]))
             ]
         )
     }
