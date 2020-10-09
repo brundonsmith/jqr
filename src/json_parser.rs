@@ -76,14 +76,40 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
 
         // strings
         if ch == '"' {
-            let content_length = match_pred(&code[index + 1..], |c| c != '"');
-            let string_end_index = index + 1 + content_length;
-            skip_to = Some(string_end_index + 1);
-            let string_content = &code[index + 1..string_end_index];
+            let mut escape_next = false;
+            let mut allocated_string: Option<String> = None;
+            let mut end = index + 1;
+            for (i, c) in code[index + 1..].char_indices() {
+                if c == '\\' && !escape_next {
+                    escape_next = true;
+                    if allocated_string.is_none() {
+                        allocated_string = Some(String::from(&code[index + 1..index + 1 + i]));
+                    }
+                } else {
+                    if c == '"' && !escape_next {
+                        skip_to = Some(index + 1 + i + 1);
+                        end = index + 1 + i;
+                        break;
+                    }
+                    
+                    match &mut allocated_string {
+                        Some(s) => {
+                            s.push(c);
+                        }
+                        None => {},
+                    };
+
+                    escape_next = false;
+                }
+            }
+
             return Some(Token { 
                 line_number, 
                 column: index - line_start, 
-                lexeme: JSONLexeme::String(string_content) 
+                lexeme: match allocated_string {
+                    Some(s) => JSONLexeme::AllocatedString(s),
+                    None => JSONLexeme::String(&code[index + 1..end]),
+                }
             });
         }
 
@@ -351,6 +377,26 @@ use crate::model::JSONValue;
             parse("12").collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
                 Ok(JSONValue::Integer(12))
+            ]
+        )
+    }
+
+    #[test]
+    fn test_5() {
+        assert_eq!(
+            parse("\"hello \\\"world\\\"\"").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![
+                Ok(JSONValue::AllocatedString(String::from("hello \"world\"")))
+            ]
+        )
+    }
+
+    #[test]
+    fn test_6() {
+        assert_eq!(
+            parse("\"hello \\\\ \\\"world\\\"\"").collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![
+                Ok(JSONValue::AllocatedString(String::from("hello \\ \"world\"")))
             ]
         )
     }
