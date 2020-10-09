@@ -59,7 +59,26 @@ fn main() -> Result<(),()> {
         json_buffer.as_str()
     };
     
-    let json_parsed = json_parser::parse(json_str).map(|r| r.unwrap());
+    let json_parsed = json_parser::parse(json_str).map(|r| {
+        match r {
+            Ok(val) => val,
+            Err(e) => {
+                let mut line_number = 0;
+                let mut column_number = 0;
+
+                for ch in json_str.chars().take(e.token.index) {
+                    if ch == '\n' {
+                        line_number += 1;
+                        column_number = 0;
+                    } else {
+                        column_number += 1;
+                    }
+                }
+
+                panic!(format!("Error parsing JSON at {}:{}\t{}", line_number, column_number, e.msg));
+            }
+        }
+    });
 
     let filter_str = matches.value_of("PATTERN").unwrap();
     let filter_parsed = filter_parser::parse(filter_str).unwrap();
