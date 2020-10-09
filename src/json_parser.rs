@@ -39,7 +39,7 @@ pub struct Token<'a> {
 
 #[derive(Debug,Clone,PartialEq)]
 pub enum JSONLexeme<'a> {
-    Special(&'a str),
+    Special(&'static char),
     String(&'a str),
     AllocatedString(String),
     Integer(i32),
@@ -114,9 +114,9 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
 
         // special tokens
         for special in &SPECIAL_TOKENS {
-            if match_front(&code[index..], special) {
-                skip_to = Some(index + special.len());
-                return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Special(*special) });
+            if code[index..].chars().nth(0).as_ref() == Some(special) {
+                skip_to = Some(index + 1);
+                return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Special(special) });
             }
         }
 
@@ -164,14 +164,6 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
     })
 }
 
-fn is_symbol(c: char) -> bool {
-    !c.is_numeric()
-        && !c.is_whitespace()
-        && !SPECIAL_TOKENS
-            .iter()
-            .any(|t| t.chars().any(|other| other == c))
-}
-
 fn match_front(code: &str, segment: &str) -> bool {
     segment.chars().zip(code.chars()).all(|(a, b)| a == b)
 }
@@ -208,7 +200,7 @@ mod match_pred_tests {
     }
 }
 
-const SPECIAL_TOKENS: [&str; 6] = ["{", "}", "[", "]", ",", ":"];
+const SPECIAL_TOKENS: [char; 6] = ['{', '}', '[', ']', ',', ':'];
 
 
 fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
@@ -222,14 +214,14 @@ fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
         JSONLexeme::Float(n) => Ok(JSONValue::Float(*n)),
         JSONLexeme::Boolean(b) => Ok(JSONValue::Boolean(*b)),
         JSONLexeme::Null => Ok(JSONValue::Null),
-        JSONLexeme::Special("{") => object_body(tokens, index),
-        JSONLexeme::Special("[") => array_body(tokens, index),
+        JSONLexeme::Special('{') => object_body(tokens, index),
+        JSONLexeme::Special('[') => array_body(tokens, index),
         JSONLexeme::Special(t) => Err(ParseError { msg: format!("Unexpected token '{}'", t), token: next.clone() }),//panic!(format!("ERROR: Unexpected token {}", t)),
     }
 }
 
 fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
-    if eat(tokens, index, "}").is_ok() {
+    if eat(tokens, index, &'}').is_ok() {
         return Ok(JSONValue::Object(HashMap::new()));
     }
 
@@ -239,21 +231,21 @@ fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONVal
 
     // TODO: consolidate
     if let Ok(JSONValue::String(prop)) = first_key {
-        eat(tokens, index, ":")?;
+        eat(tokens, index, &':')?;
         let value = expression(tokens, index)?;
 
         contents.insert(StrOrString::Str(prop), value);
 
-        while let Ok(_) = eat(tokens, index, ",") {
+        while let Ok(_) = eat(tokens, index, &',') {
             let key = expression(tokens, index);
 
             if let Ok(JSONValue::String(prop)) = key {
-                eat(tokens, index, ":")?;
+                eat(tokens, index, &':')?;
                 let value = expression(tokens, index)?;
 
                 contents.insert(StrOrString::Str(prop), value);
             } else if let Ok(JSONValue::AllocatedString(prop)) = key {
-                eat(tokens, index, ":")?;
+                eat(tokens, index, &':')?;
                 let value = expression(tokens, index)?;
 
                 contents.insert(StrOrString::String(prop), value);
@@ -265,21 +257,21 @@ fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONVal
             }
         }
     } else if let Ok(JSONValue::AllocatedString(prop)) = first_key {
-        eat(tokens, index, ":")?;
+        eat(tokens, index, &':')?;
         let value = expression(tokens, index)?;
 
         contents.insert(StrOrString::String(prop), value);
 
-        while let Ok(_) = eat(tokens, index, ",") {
+        while let Ok(_) = eat(tokens, index, &',') {
             let key = expression(tokens, index);
 
             if let Ok(JSONValue::String(prop)) = key {
-                eat(tokens, index, ":")?;
+                eat(tokens, index, &':')?;
                 let value = expression(tokens, index)?;
 
                 contents.insert(StrOrString::Str(prop), value);
             } else if let Ok(JSONValue::AllocatedString(prop)) = key {
-                eat(tokens, index, ":")?;
+                eat(tokens, index, &':')?;
                 let value = expression(tokens, index)?;
 
                 contents.insert(StrOrString::String(prop), value);
@@ -291,13 +283,13 @@ fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONVal
             }
         }
     }
-    eat(tokens, index, "}")?;
+    eat(tokens, index, &'}')?;
     
     return Ok(JSONValue::Object(contents));
 }
 
 fn array_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
-    if eat(tokens, index, "]").is_ok() {
+    if eat(tokens, index, &']').is_ok() {
         return Ok(JSONValue::Array(vec![]));
     }
 
@@ -306,12 +298,12 @@ fn array_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
     if let Ok(value) = expression(tokens, index) {
         contents.push(value);
 
-        while let Ok(_) = eat(tokens, index, ",") {
+        while let Ok(_) = eat(tokens, index, &',') {
             let value = expression(tokens, index)?;
             contents.push(value);
         }
     }
-    eat(tokens, index, "]")?;
+    eat(tokens, index, &']')?;
 
     return Ok(JSONValue::Array(contents));
 }
@@ -325,7 +317,7 @@ fn property_name<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<&'a s
     }
 }
 
-fn eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Result<(), ParseError<'a>> {
+fn eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &char) -> Result<(), ParseError<'a>> {
     if let JSONLexeme::Special(found) = tokens[*index].lexeme {
         if found == expected {
             *index += 1;
