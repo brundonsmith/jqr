@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::{fs::File, io::Read};
+use std::{fs::File, io::Read, io::Write};
 
 use filters::apply_filter;
 
@@ -67,7 +67,7 @@ fn main() -> Result<(),()> {
     let filtered = apply_filter(&filter_parsed, json_parsed);
 
     for val in filtered {
-        println!("{}", val);
+        std::io::stdout().write(format!("{}", val).as_bytes()).map_err(|_| ())?;
     }
 
     Ok(())
