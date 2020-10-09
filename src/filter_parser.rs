@@ -142,7 +142,9 @@ fn match_pred<F: Fn(char) -> bool>(code: &str, pred: F) -> usize {
         .unwrap_or(0)
 }
 
-const SPECIAL_TOKENS: [&str; 16] = ["{", "}", "[", "]", "(", ")", ",", "|", ":", ".", "?", "+", "-", "*", "/", "%"];
+const SPECIAL_TOKENS: [&str; 26] = ["{", "}", "[", "]", "(", ")", ",", "|", ":", 
+".", "?", "+", "-", "*", "/", "%", "==", "!=", ">", ">=", "<", "<=", "and", 
+"or", "not", "//"];
 
 
 
@@ -193,10 +195,66 @@ fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, P
 fn operation<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
     let left = function(tokens, index)?;
 
-    if try_eat(tokens, index, "+").is_ok() {
-        let right = function(tokens, index)?;
-
-        return Ok(Filter::Add { left: Box::new(left), right: Box::new(right) });
+    match tokens.get(*index).map(|t| &t.lexeme) {
+        Some(FilterLexeme::Special(s)) => match *s {
+            "+" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::Add { left: Box::new(left), right: Box::new(right) });
+            },
+            "-" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::Subtract { left: Box::new(left), right: Box::new(right) });
+            },
+            "*" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::Multiply { left: Box::new(left), right: Box::new(right) });
+            },
+            "/" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::Divide { left: Box::new(left), right: Box::new(right) });
+            },
+            "%" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::Modulo { left: Box::new(left), right: Box::new(right) });
+            },
+            "<" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::LessThan { left: Box::new(left), right: Box::new(right) });
+            },
+            "<=" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::LessThanOrEqual { left: Box::new(left), right: Box::new(right) });
+            },
+            ">" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::GreaterThan { left: Box::new(left), right: Box::new(right) });
+            },
+            ">=" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::GreaterThanOrEqual { left: Box::new(left), right: Box::new(right) });
+            },
+            "and" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::And { left: Box::new(left), right: Box::new(right) });
+            },
+            "or" => {
+                *index += 1;
+                let right = function(tokens, index)?;
+                return Ok(Filter::Or { left: Box::new(left), right: Box::new(right) });
+            },
+            _ => {}
+        },
+        _ => {}
     }
 
     return Ok(left);
@@ -210,6 +268,7 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
             "length" => Ok(Filter::Length),
             "keys" => Ok(Filter::Keys),
             "keys_unsorted" => Ok(Filter::KeysUnsorted),
+            "not" => Ok(Filter::Not),
             _ => {
                 try_eat(tokens, index, "(")?;
 
@@ -219,6 +278,7 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
 
                 match *func {
                     "map" => Ok(Filter::Map(inner)),
+                    "select" => Ok(Filter::Select(inner)),
                     _ => Err(ParseError {
                         token: tokens.get(*index - 1).cloned(),
                         msg: format!("Function '{}' is unknown", func),

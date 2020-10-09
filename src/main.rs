@@ -70,6 +70,8 @@ fn main() -> Result<(),()> {
         std::io::stdout().write(format!("{}", val).as_bytes()).map_err(|_| ())?;
     }
 
+    std::io::stdout().write("\n".as_bytes()).map_err(|_| ())?;
+
     Ok(())
 }
 

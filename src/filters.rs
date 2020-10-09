@@ -79,36 +79,29 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 return result;
             }).flatten()),
 
-        Filter::Add { left, right } => Box::new(values.map(move |val| {
-            let left_vals = apply_filter(left, std::iter::once(val.clone()));
-            let right_vals = apply_filter(right, std::iter::once(val));
+        Filter::Add { left, right } => applied_to_combinations(values, left, right, &add),
+        Filter::Subtract { left, right } => applied_to_combinations(values, left, right, &subtract),
+        Filter::Multiply { left, right } => applied_to_combinations(values, left, right, &multiply),
+        Filter::Divide { left, right } => applied_to_combinations(values, left, right, &divide),
+        Filter::Modulo { left, right } => applied_to_combinations(values, left, right, &modulo),
 
-            combinations(left_vals, right_vals).map(add)
-        }).flatten()),
-        Filter::Subtract { left, right } => Box::new(values.map(move |val| {
-            let left_vals = apply_filter(left, std::iter::once(val.clone()));
-            let right_vals = apply_filter(right, std::iter::once(val));
+        Filter::Equal { left, right } => applied_to_combinations(values, left, right, &equal),
+        Filter::NotEqual { left, right } => applied_to_combinations(values, left, right, &not_equal),
 
-            combinations(left_vals, right_vals).map(subtract)
-        }).flatten()),
-        Filter::Multiply { left, right } => Box::new(values.map(move |val| {
-            let left_vals = apply_filter(left, std::iter::once(val.clone()));
-            let right_vals = apply_filter(right, std::iter::once(val));
+        Filter::LessThan { left, right } => applied_to_combinations(values, left, right, &less_than),
+        Filter::LessThanOrEqual { left, right } => applied_to_combinations(values, left, right, &less_than_or_equal),
+        Filter::GreaterThan { left, right } => applied_to_combinations(values, left, right, &greater_than),
+        Filter::GreaterThanOrEqual { left, right } => applied_to_combinations(values, left, right, &greater_than_or_equal),
 
-            combinations(left_vals, right_vals).map(multiply)
-        }).flatten()),
-        Filter::Divide { left, right } => Box::new(values.map(move |val| {
-            let left_vals = apply_filter(left, std::iter::once(val.clone()));
-            let right_vals = apply_filter(right, std::iter::once(val));
-
-            combinations(left_vals, right_vals).map(divide)
-        }).flatten()),
-        Filter::Modulo { left, right } => Box::new(values.map(move |val| {
-            let left_vals = apply_filter(left, std::iter::once(val.clone()));
-            let right_vals = apply_filter(right, std::iter::once(val));
-
-            combinations(left_vals, right_vals).map(modulo)
-        }).flatten()),
+        Filter::And { left, right } => applied_to_combinations(values, left, right, &and),
+        Filter::Or { left, right } => applied_to_combinations(values, left, right, &or),
+        Filter::Not => Box::new(values.map(move |val| -> JSONValue<'a> {
+            if let JSONValue::Boolean(v) = val {
+                return JSONValue::Boolean(!v);
+            } else {
+                panic!(format!("Error: 'not' can only be used on values of type Boolean; got '{}'", val));
+            }
+        })),
 
         Filter::Length => Box::new(values.map(move |val| {
             match val {
@@ -122,21 +115,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::Keys => {
             let mut unsorted_keys = values.map(keys).flatten().collect::<Vec<JSONValue<'a>>>();
 
-            unsorted_keys.sort_by(|a, b| {
-                if let JSONValue::String(a) = a {
-                    if let JSONValue::String(b) = b {
-                        return a.cmp(b);
-                    }
-                }
-
-                if let JSONValue::Integer(a) = a {
-                    if let JSONValue::Integer(b) = b {
-                        return a.cmp(b);
-                    }
-                }
-
-                unreachable!();
-            });
+            unsorted_keys.sort();
 
             return Box::new(unsorted_keys.into_iter());
         },
@@ -147,6 +126,11 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     JSONValue::Array(arr.into_iter().map(|v| apply_filter(pred, std::iter::once(v))).flatten().collect()),
                 _ => panic!(format!("Cannot map over a value of type {}", val.type_name()))
             }
+        })),
+        Filter::Select(pred) => Box::new(values.filter(move |val| {
+            let mut inner_vals = apply_filter(pred, std::iter::once(val.clone()));
+
+            inner_vals.all(|v| v == JSONValue::Boolean(true))
         }))
     }
 }
@@ -174,6 +158,15 @@ fn combinations<'a>(a: impl Iterator<Item=JSONValue<'a>>, b: impl Iterator<Item=
             return None;
         }
     });
+}
+
+fn applied_to_combinations<'a>(values: impl 'a + Iterator<Item=JSONValue<'a>>, left: &'a Filter<'a>, right: &'a Filter<'a>, func: &'static impl Fn((JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
+    Box::new(values.map(move |val| {
+        let left_vals = apply_filter(left, std::iter::once(val.clone()));
+        let right_vals = apply_filter(right, std::iter::once(val));
+
+        combinations(left_vals, right_vals).map(func)
+    }).flatten())
 }
 
 fn keys<'a>(val: JSONValue<'a>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
@@ -374,6 +367,65 @@ fn modulo<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     panic!(format!("Cannot get the modulus of values of type {} and {}", a.type_name(), b.type_name()));
 }
 
+fn equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    JSONValue::Boolean(a == b)
+}
+
+fn not_equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    JSONValue::Boolean(a != b)
+}
+
+fn less_than<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    JSONValue::Boolean(a < b)
+}
+
+fn less_than_or_equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    JSONValue::Boolean(a <= b)
+}
+
+fn greater_than<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    JSONValue::Boolean(a > b)
+}
+
+fn greater_than_or_equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    JSONValue::Boolean(a >= b)
+}
+
+fn and<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    if let JSONValue::Boolean(a) = a {
+        if let JSONValue::Boolean(b) = b {
+            return JSONValue::Boolean(a && b);
+        }
+    }
+
+    panic!(format!("Cannot apply 'and' to values of type {} and {}", a.type_name(), b.type_name()));
+}
+
+fn or<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    if let JSONValue::Boolean(a) = a {
+        if let JSONValue::Boolean(b) = b {
+            return JSONValue::Boolean(a || b);
+        }
+    }
+
+    panic!(format!("Cannot apply 'or' to values of type {} and {}", a.type_name(), b.type_name()));
+}
 
 
 #[cfg(test)]

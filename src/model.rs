@@ -49,12 +49,92 @@ impl<'a> PartialEq for JSONValue<'a> {
     }
 }
 
+impl<'a> Eq for JSONValue<'a> { }
+
 #[test]
 fn test_1() {
     assert_eq!(JSONValue::String("foo"), JSONValue::AllocatedString(String::from("foo")));
 }
 
-impl<'a> Eq for JSONValue<'a> { }
+impl<'a> PartialOrd for JSONValue<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let cmp_key_self = type_cmp_key(self);
+        let cmp_key_other = type_cmp_key(other);
+        if cmp_key_self != cmp_key_other {
+            return cmp_key_self.partial_cmp(&cmp_key_other);
+        }
+
+
+        if let JSONValue::String(s) = self {
+            if let JSONValue::String(other) = other {
+                return s.partial_cmp(other);
+            }
+            if let JSONValue::AllocatedString(other) = other {
+                return s.partial_cmp(&other.as_str());
+            }
+        } else if let JSONValue::AllocatedString(s) = self {
+            if let JSONValue::String(other) = other {
+                return s.as_str().partial_cmp(other);
+            }
+            if let JSONValue::AllocatedString(other) = other {
+                return s.partial_cmp(other);
+            }
+        }
+
+        if let JSONValue::Integer(s) = self {
+            if let JSONValue::Integer(other) = other {
+                return s.partial_cmp(other);
+            }
+            if let JSONValue::Float(other) = other {
+                return (*s as f32).partial_cmp(other);
+            }
+        }
+        
+        if let JSONValue::Float(s) = self {
+            if let JSONValue::Integer(other) = other {
+                return s.partial_cmp(&(*other as f32));
+            }
+            if let JSONValue::Float(other) = other {
+                return s.partial_cmp(other);
+            }
+        }
+
+        if let JSONValue::Array(s) = self {
+            if let JSONValue::Array(other) = other {
+                todo!()
+            }
+        }
+
+        if let JSONValue::Object(s) = self {
+            if let JSONValue::Object(other) = other {
+                todo!()
+            }
+        }
+
+        None
+    }
+}
+
+impl<'a> Ord for JSONValue<'a> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+fn type_cmp_key(val: &JSONValue) -> u8 {
+    match val {
+        JSONValue::Object(_) => 6,
+        JSONValue::Array(_) => 5,
+        JSONValue::String(_) => 4,
+        JSONValue::AllocatedString(_) => 4,
+        JSONValue::Integer(_) => 3,
+        JSONValue::Float(_) => 3,
+        JSONValue::Boolean(true) => 2,
+        JSONValue::Boolean(false) => 1,
+        JSONValue::Null => 0,
+    }
+}
+
 
 impl<'a> Display for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -128,7 +208,7 @@ fn write_newline_and_indentation(f: &mut std::fmt::Formatter<'_>, indentation: i
     Ok(())
 }
 
-const INDENTATION_STR: &str = "\t";
+const INDENTATION_STR: &str = "  ";
 
 
 #[derive(Debug,Clone,PartialEq)]
@@ -153,9 +233,23 @@ pub enum Filter<'a> {
     Divide { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
     Modulo { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
 
+    // comparison
+    Equal { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    NotEqual  { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+
+    LessThan { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    LessThanOrEqual { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    GreaterThan { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    GreaterThanOrEqual { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+
+    And { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    Or { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    Not,
+
     // functions
     Length,
     Keys,
     KeysUnsorted,
     Map(Box<Filter<'a>>),
+    Select(Box<Filter<'a>>),
 }
