@@ -183,7 +183,10 @@ fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
         JSONLexeme::Null => Ok(JSONValue::Null),
         JSONLexeme::Special('{') => object_body(tokens, index),
         JSONLexeme::Special('[') => array_body(tokens, index),
-        JSONLexeme::Special(t) => Err(ParseError { msg: format!("Unexpected token '{}'", t), token: next.clone() }),
+        JSONLexeme::Special(t) => Err(ParseError { 
+            msg: format!("Unexpected token '{}'", t), 
+            token: next.clone() 
+        }),
     }
 }
 
@@ -258,7 +261,10 @@ fn property_name<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<&'a s
         *index += 1;
         return Ok(prop);
     } else {
-        return Err(ParseError { msg: format!("Expected object property name"), token: tokens[*index].clone() });
+        return Err(ParseError { 
+            msg: format!("Expected object property name"), 
+            token: tokens[*index].clone() 
+        });
     }
 }
 
@@ -268,10 +274,16 @@ fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &char) -> R
             *index += 1;
             Ok(())
         } else {
-            return Err(ParseError { msg: format!("Expected '{}', found '{}'", expected, found), token: tokens[*index].clone() });
+            return Err(ParseError { 
+                msg: format!("Expected '{}', found '{}'", expected, found), 
+                token: tokens[*index].clone() 
+            });
         }
     } else {
-        return Err(ParseError { msg: format!("Expected '{}'", expected), token: tokens[*index].clone() });
+        return Err(ParseError { 
+            msg: format!("Expected '{}'", expected), 
+            token: tokens[*index].clone() 
+        });
     }
 }
 
