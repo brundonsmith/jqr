@@ -195,9 +195,15 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         if let JSONValue::Integer(b) = b {
             return JSONValue::Integer(a + b);
         }
+        if let JSONValue::Float(b) = b {
+            return JSONValue::Float(a as f32 + b);
+        }
     }
     
     if let JSONValue::Float(a) = a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::Float(a + b as f32);
+        }
         if let JSONValue::Float(b) = b {
             return JSONValue::Float(a + b);
         }
