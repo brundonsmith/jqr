@@ -128,11 +128,19 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
 
         // numbers
         if ch.is_numeric() {
-            let front_end = index + match_pred(&code[index..], |c| c.is_numeric());
+            let front_end = index + code[index..].char_indices()
+                .take_while(|(_, c)| c.is_numeric())
+                .last()
+                .map(|(index, ch)| index + ch.len_utf8())
+                .unwrap_or(0);
 
             if code[front_end..].chars().next() == Some('.') {
-                let back_end =
-                    front_end + 1 + match_pred(&code[front_end + 1..], |c| c.is_numeric());
+                let back_end_start = front_end + 1;
+                let back_end = back_end_start + code[back_end_start..].char_indices()
+                    .take_while(|(_, c)| c.is_numeric())
+                    .last()
+                    .map(|(index, ch)| index + ch.len_utf8())
+                    .unwrap_or(0);
 
                 skip_to = Some(back_end);
                 return Some(Token {
@@ -156,37 +164,37 @@ fn match_front(code: &str, segment: &str) -> bool {
     segment.chars().zip(code.chars()).all(|(a, b)| a == b)
 }
 
-fn match_pred<F: Fn(char) -> bool>(code: &str, pred: F) -> usize {
-    code.char_indices()
-        .take_while(|(_, c)| pred(*c))
-        .last()
-        .map(|(index, ch)| index + ch.len_utf8())
-        .unwrap_or(0)
-}
+// fn match_pred<F: Fn(char) -> bool>(code: &str, pred: F) -> usize {
+//     code.char_indices()
+//         .take_while(|(_, c)| pred(*c))
+//         .last()
+//         .map(|(index, ch)| index + ch.len_utf8())
+//         .unwrap_or(0)
+// }
 
-#[cfg(test)]
-mod match_pred_tests {
-    use super::match_pred;
+// #[cfg(test)]
+// mod match_pred_tests {
+//     use super::match_pred;
 
-    #[test]
-    fn test_1() {
-        assert_eq!(match_pred("foobar", |c| c != 'b'), 3);
-    }
-    #[test]
-    fn test_2() {
-        assert_eq!(match_pred("foobar", |c| c != 'f'), 0);
-    }
+//     #[test]
+//     fn test_1() {
+//         assert_eq!(match_pred("foobar", |c| c != 'b'), 3);
+//     }
+//     #[test]
+//     fn test_2() {
+//         assert_eq!(match_pred("foobar", |c| c != 'f'), 0);
+//     }
 
-    #[test]
-    fn test_3() {
-        assert_eq!(match_pred("フシギダネ\"", |c| c != '"'), 15);
-    }
+//     #[test]
+//     fn test_3() {
+//         assert_eq!(match_pred("フシギダネ\"", |c| c != '"'), 15);
+//     }
 
-    #[test]
-    fn test_4() {
-        assert_eq!(match_pred("12", |c| c.is_numeric()), 2);
-    }
-}
+//     #[test]
+//     fn test_4() {
+//         assert_eq!(match_pred("12", |c| c.is_numeric()), 2);
+//     }
+// }
 
 const SPECIAL_TOKENS: [char; 6] = ['{', '}', '[', ']', ',', ':'];
 const TRUE_TOKEN: &str = "true";
@@ -209,65 +217,33 @@ fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
         JSONLexeme::Null => Ok(JSONValue::Null),
         JSONLexeme::Special('{') => object_body(tokens, index),
         JSONLexeme::Special('[') => array_body(tokens, index),
-        JSONLexeme::Special(t) => Err(ParseError { msg: format!("Unexpected token '{}'", t), token: next.clone() }),//panic!(format!("ERROR: Unexpected token {}", t)),
+        JSONLexeme::Special(t) => Err(ParseError { msg: format!("Unexpected token '{}'", t), token: next.clone() }),
     }
 }
 
 fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
-    if eat(tokens, index, &'}').is_ok() {
+    if try_eat(tokens, index, &'}').is_ok() {
         return Ok(JSONValue::Object(HashMap::new()));
     }
 
     let mut contents = HashMap::new();
 
-    let first_key = expression(tokens, index);
+    let key = expression(tokens, index);
 
-    // TODO: consolidate
-    if let Ok(JSONValue::String(prop)) = first_key {
-        eat(tokens, index, &':')?;
+    if let Some(prop) = consume_str_or_string(key) {
+        try_eat(tokens, index, &':')?;
         let value = expression(tokens, index)?;
 
-        contents.insert(StrOrString::Str(prop), value);
+        contents.insert(prop, value);
 
-        while let Ok(_) = eat(tokens, index, &',') {
+        while try_eat(tokens, index, &',').is_ok() {
             let key = expression(tokens, index);
 
-            if let Ok(JSONValue::String(prop)) = key {
-                eat(tokens, index, &':')?;
+            if let Some(prop) = consume_str_or_string(key) {
+                try_eat(tokens, index, &':')?;
                 let value = expression(tokens, index)?;
 
-                contents.insert(StrOrString::Str(prop), value);
-            } else if let Ok(JSONValue::AllocatedString(prop)) = key {
-                eat(tokens, index, &':')?;
-                let value = expression(tokens, index)?;
-
-                contents.insert(StrOrString::String(prop), value);
-            } else {
-                return Err(ParseError {
-                    msg: String::from("Expected object property after ','"),
-                    token: tokens[*index].clone(),
-                });
-            }
-        }
-    } else if let Ok(JSONValue::AllocatedString(prop)) = first_key {
-        eat(tokens, index, &':')?;
-        let value = expression(tokens, index)?;
-
-        contents.insert(StrOrString::String(prop), value);
-
-        while let Ok(_) = eat(tokens, index, &',') {
-            let key = expression(tokens, index);
-
-            if let Ok(JSONValue::String(prop)) = key {
-                eat(tokens, index, &':')?;
-                let value = expression(tokens, index)?;
-
-                contents.insert(StrOrString::Str(prop), value);
-            } else if let Ok(JSONValue::AllocatedString(prop)) = key {
-                eat(tokens, index, &':')?;
-                let value = expression(tokens, index)?;
-
-                contents.insert(StrOrString::String(prop), value);
+                contents.insert(prop, value);
             } else {
                 return Err(ParseError {
                     msg: String::from("Expected object property after ','"),
@@ -276,13 +252,25 @@ fn object_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONVal
             }
         }
     }
-    eat(tokens, index, &'}')?;
+    try_eat(tokens, index, &'}')?;
     
     return Ok(JSONValue::Object(contents));
 }
 
+fn consume_str_or_string<'a>(next: Result<JSONValue<'a>, ParseError>) -> Option<StrOrString<'a>> {
+    if let Ok(JSONValue::String(prop)) = next {
+        return Some(StrOrString::Str(prop));
+    } else if let Ok(JSONValue::AllocatedString(prop)) = next {
+        return Some(StrOrString::String(prop));
+    } else {
+        return None;
+    }
+}
+
+// fn _
+
 fn array_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
-    if eat(tokens, index, &']').is_ok() {
+    if try_eat(tokens, index, &']').is_ok() {
         return Ok(JSONValue::Array(vec![]));
     }
 
@@ -291,12 +279,12 @@ fn array_body<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
     if let Ok(value) = expression(tokens, index) {
         contents.push(value);
 
-        while let Ok(_) = eat(tokens, index, &',') {
+        while let Ok(_) = try_eat(tokens, index, &',') {
             let value = expression(tokens, index)?;
             contents.push(value);
         }
     }
-    eat(tokens, index, &']')?;
+    try_eat(tokens, index, &']')?;
 
     return Ok(JSONValue::Array(contents));
 }
@@ -310,7 +298,7 @@ fn property_name<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<&'a s
     }
 }
 
-fn eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &char) -> Result<(), ParseError<'a>> {
+fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &char) -> Result<(), ParseError<'a>> {
     if let JSONLexeme::Special(found) = tokens[*index].lexeme {
         if found == expected {
             *index += 1;
