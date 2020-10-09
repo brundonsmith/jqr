@@ -449,8 +449,6 @@ mod tests {
     use crate::model::{Filter, JSONValue};
     use crate::filter_parser::parse;
 
-    use super::{FilterLexeme, Token, tokenize};
-
     #[test]
     fn test_1() {
         assert_eq!(parse(".foo"), Ok(Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }));

@@ -1,5 +1,5 @@
 
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap};
 
 use crate::model::{JSONValue, StrOrString};
 
@@ -69,17 +69,19 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
         if ch == '"' {
             let mut escape_next = false;
             let mut allocated_string: Option<String> = None;
-            let mut end = index + 1;
+            let contents_start = index + 1;
+            let mut end = contents_start;
             for (i, c) in code[index + 1..].char_indices() {
+                let current_index = contents_start + i;
                 if c == '\\' && !escape_next {
                     escape_next = true;
                     if allocated_string.is_none() {
-                        allocated_string = Some(String::from(&code[index + 1..index + 1 + i]));
+                        allocated_string = Some(String::from(&code[contents_start..current_index]));
                     }
                 } else {
                     if c == '"' && !escape_next {
-                        skip_to = Some(index + 1 + i + 1);
-                        end = index + 1 + i;
+                        end = contents_start + i;
+                        skip_to = Some(current_index + 1);
                         break;
                     }
                     
@@ -326,7 +328,7 @@ mod parser_tests {
         use std::collections::HashMap;
 
 use crate::model::{JSONValue, StrOrString};
-    use super::{ParseError, Token, parse, tokenize};
+    use super::{ParseError, parse};
 
     #[test]
     fn test_1() {
