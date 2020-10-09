@@ -84,9 +84,7 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
                     }
                     
                     match &mut allocated_string {
-                        Some(s) => {
-                            s.push(c);
-                        }
+                        Some(s) => s.push(c),
                         None => {},
                     };
 
@@ -130,7 +128,7 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
         if ch.is_numeric() {
             let front_end = index + match_pred(&code[index..], |c| c.is_numeric());
 
-            if front_end < code.len() - 1 && &code[front_end..front_end + 1] == "." {
+            if code[front_end..].chars().next() == Some('.') {
                 let back_end =
                     front_end + 1 + match_pred(&code[front_end + 1..], |c| c.is_numeric());
 
