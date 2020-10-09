@@ -43,7 +43,7 @@ pub struct Token<'a> {
 pub enum FilterLexeme<'a> {
     Special(&'a str),
     Identifier(&'a str),
-    Index(usize),
+    Number(usize),
 }
 
 fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
@@ -114,7 +114,7 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
             return Some(Token { 
                 line_number,
                 column: index - line_start,
-                lexeme: FilterLexeme::Index(code[index..front_end].parse().unwrap())
+                lexeme: FilterLexeme::Number(code[index..front_end].parse().unwrap())
             });
         }
 
@@ -171,15 +171,15 @@ fn pipe<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, Pa
 }
 
 fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-    let first = identifier_chain(tokens, index)?;
+    let first = operation(tokens, index)?;
 
     if try_eat(tokens, index, ",").is_ok() {
-        let second = identifier_chain(tokens, index)?;
+        let second = operation(tokens, index)?;
 
         let mut sequence = vec![ first, second ];
 
         while try_eat(tokens, index, ",").is_ok() {
-            let next = identifier_chain(tokens, index)?;
+            let next = operation(tokens, index)?;
 
             sequence.push(next);
         }
@@ -188,6 +188,47 @@ fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, P
     }
 
     return Ok(first);
+}
+
+fn operation<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+    let left = function(tokens, index)?;
+
+    if try_eat(tokens, index, "+").is_ok() {
+        let right = function(tokens, index)?;
+
+        return Ok(Filter::Add { left: Box::new(left), right: Box::new(right) });
+    }
+
+    return Ok(left);
+}
+
+fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+    if let Some(FilterLexeme::Identifier(func)) = tokens.get(*index).map(|t| &t.lexeme) {
+        *index += 1;
+
+        return match *func {
+            "length" => Ok(Filter::Length),
+            "keys" => Ok(Filter::Keys),
+            "keys_unsorted" => Ok(Filter::KeysUnsorted),
+            _ => {
+                try_eat(tokens, index, "(")?;
+
+                let inner = Box::new(filter(tokens, index)?);
+
+                try_eat(tokens, index, ")")?;
+
+                match *func {
+                    "map" => Ok(Filter::Map(inner)),
+                    _ => Err(ParseError {
+                        token: tokens.get(*index - 1).cloned(),
+                        msg: format!("Function '{}' is unknown", func),
+                    })
+                }
+            }
+        }
+    }
+
+    return identifier_chain(tokens, index);
 }
 
 fn identifier_chain<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
@@ -218,46 +259,7 @@ fn identifier_chain<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
         }
     }
 
-    return function(tokens, index);
-}
-
-fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-    if let Some(FilterLexeme::Identifier(func)) = tokens.get(*index).map(|t| &t.lexeme) {
-        *index += 1;
-
-        return match *func {
-            "length" => Ok(Filter::Length),
-            "keys" => Ok(Filter::Keys),
-            "keys_unsorted" => Ok(Filter::KeysUnsorted),
-            _ => {
-                try_eat(tokens, index, "(")?;
-
-                let inner = Box::new(filter(tokens, index)?);
-
-                try_eat(tokens, index, ")")?;
-
-                match *func {
-                    "map" => Ok(Filter::Map(inner)),
-                    _ => Err(ParseError {
-                        token: tokens.get(*index - 1).cloned(),
-                        msg: format!("Function '{}' is unknown", func),
-                    })
-                }
-            }
-        }
-    }
-
     return json_literal(tokens, index);
-}
-
-fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-
-    todo!();
-    
-    return Err(ParseError {
-        msg: String::from("Expected filter expression"),
-        token: None,
-    });
 }
 
 fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
@@ -278,12 +280,12 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>,
                     optional: try_eat(tokens, index, "?").is_ok()
                 })
             },
-            Some(Token { lexeme: FilterLexeme::Index(start), column: _, line_number: _ }) => {
+            Some(Token { lexeme: FilterLexeme::Number(start), column: _, line_number: _ }) => {
                 *index += 1;
 
                 if try_eat(tokens, index, ":").is_ok() {
                     let end = tokens.get(*index).map(|t| {
-                        if let FilterLexeme::Index(i) = t.lexeme {
+                        if let FilterLexeme::Number(i) = t.lexeme {
                             *index += 1;
                             Some(i)
                         } else {
@@ -305,7 +307,7 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>,
                 *index += 1;
 
                 let end = tokens.get(*index).map(|t| {
-                    if let FilterLexeme::Index(i) = t.lexeme {
+                    if let FilterLexeme::Number(i) = t.lexeme {
                         *index += 1;
                         Some(i)
                     } else {
@@ -332,18 +334,31 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>,
         try_eat(tokens, index, "]")?;
 
         return filter;
-    } else {
-        let token = tokens.get(*index).cloned();
-        let found_str = match &token {
-            Some(t) => format!("{:?}", t.lexeme),
-            None => String::from("<EOF>"),
-        };
-
-        return Err(ParseError {
-            msg: format!("Expected identifier, found {}", found_str),
-            token,
-        });
     }
+
+    let token = tokens.get(*index).cloned();
+    let found_str = match &token {
+        Some(t) => format!("{:?}", t.lexeme),
+        None => String::from("<EOF>"),
+    };
+
+    return Err(ParseError {
+        msg: format!("Expected identifier, found {}", found_str),
+        token,
+    });
+}
+
+fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+
+    if let Some(FilterLexeme::Number(n)) = tokens.get(*index).map(|t| &t.lexeme) {
+        *index += 1;
+        return Ok(Filter::Literal(crate::model::JSONValue::Integer(*n as i32)));
+    }
+    
+    return Err(ParseError {
+        msg: String::from("Expected filter expression"),
+        token: None,
+    });
 }
 
 fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Result<(), ParseError<'a>> {
@@ -366,7 +381,7 @@ fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Re
 
 #[cfg(test)]
 mod tests {
-    use crate::model::Filter;
+    use crate::model::{Filter, JSONValue};
     use crate::filter_parser::parse;
 
     use super::{FilterLexeme, Token, tokenize};
@@ -443,6 +458,26 @@ mod tests {
         assert_eq!(
             parse("map(.foo)"), 
             Ok(Filter::Map(Box::new(Filter::ObjectIdentifierIndex { identifier: "foo", optional: false })))
+        );
+    }
+
+    #[test]
+    fn test_10() {
+        assert_eq!(
+            parse(".second.store.books | map(.price + 10)"),
+            Ok(Filter::Pipe(vec![
+                Filter::Pipe(vec![
+                    Filter::ObjectIdentifierIndex { identifier: "second", optional: false }, 
+                    Filter::ObjectIdentifierIndex { identifier: "store", optional: false }, 
+                    Filter::ObjectIdentifierIndex { identifier: "books", optional: false }
+                ]), 
+                Filter::Map(
+                    Box::new(Filter::Add { 
+                        left: Box::new(Filter::ObjectIdentifierIndex { identifier: "price", optional: false }),
+                        right: Box::new(Filter::Literal(JSONValue::Integer(10)))
+                    })
+                )
+            ]))
         );
     }
 }
