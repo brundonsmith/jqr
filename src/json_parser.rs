@@ -12,21 +12,20 @@ pub struct ParseError {
 }
 
 const TRUE_TOKEN: &str = "true";
-const TRUE_TOKEN_LEN: usize = TRUE_TOKEN.len();
 const FALSE_TOKEN: &str = "false";
-const FALSE_TOKEN_LEN: usize = FALSE_TOKEN.len();
 const NULL_TOKEN: &str = "null";
-const NULL_TOKEN_LEN: usize = NULL_TOKEN.len();
 
 
 // parsing
 pub fn parse<'a>(code: &'a str) -> impl Iterator<Item=Result<JSONValue<'a>,ParseError>> {
     let mut index = 0;
 
+    consume_whitespace(code, &mut index);
     std::iter::from_fn(move || {
-        consume_whitespace(code, &mut index);
         if index < code.len() {
-            Some(expression(code, &mut index))
+            let res = Some(expression(code, &mut index));
+            consume_whitespace(code, &mut index);
+            res
         } else {
             None
         }
@@ -34,6 +33,7 @@ pub fn parse<'a>(code: &'a str) -> impl Iterator<Item=Result<JSONValue<'a>,Parse
 }
 
 fn expression<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
+    consume_whitespace(code, index);
     let ch = code[*index..].chars().next();
 
     if ch == Some('"') {
@@ -44,14 +44,11 @@ fn expression<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, Par
         array(code, index)
     } else if ch.map(|c| c.is_numeric()).unwrap_or(false) {
         number(code, index)
-    } else if match_front(&code[*index..], TRUE_TOKEN) {
-        *index += TRUE_TOKEN_LEN;
+    } else if try_match_front(code, index, TRUE_TOKEN) {
         Ok(JSONValue::Boolean(true))
-    } else if match_front(&code[*index..], FALSE_TOKEN) {
-        *index += FALSE_TOKEN_LEN;
+    } else if try_match_front(code, index, FALSE_TOKEN) {
         Ok(JSONValue::Boolean(false))
-    } else if match_front(&code[*index..], NULL_TOKEN) {
-        *index += NULL_TOKEN_LEN;
+    } else if try_match_front(code, index, NULL_TOKEN) {
         Ok(JSONValue::Null)
     } else {
         Err(ParseError {
@@ -64,35 +61,25 @@ fn expression<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, Par
 fn object<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
     try_eat(code, index, &'{')?;
 
-    consume_whitespace(code, index);
     if try_eat(code, index, &'}').is_ok() {
         return Ok(JSONValue::Object(HashMap::new()));
     }
 
     let mut contents = HashMap::new();
 
-    consume_whitespace(code, index);
     let key = expression(code, index);
 
-    consume_whitespace(code, index);
     if let Some(prop) = as_str_or_string(key) {
-        consume_whitespace(code, index);
         try_eat(code, index, &':')?;
-        consume_whitespace(code, index);
         let value = expression(code, index)?;
 
         contents.insert(prop, value);
 
-        consume_whitespace(code, index);
         while try_eat(code, index, &',').is_ok() {
-            consume_whitespace(code, index);
             let key = expression(code, index);
 
-            consume_whitespace(code, index);
             if let Some(prop) = as_str_or_string(key) {
-                consume_whitespace(code, index);
                 try_eat(code, index, &':')?;
-                consume_whitespace(code, index);
                 let value = expression(code, index)?;
 
                 contents.insert(prop, value);
@@ -102,11 +89,8 @@ fn object<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
                     index: *index,
                 });
             }
-
-            consume_whitespace(code, index);
         }
     }
-    consume_whitespace(code, index);
     try_eat(code, index, &'}')?;
     
     return Ok(JSONValue::Object(contents));
@@ -125,25 +109,20 @@ fn as_str_or_string<'a>(next: Result<JSONValue<'a>, ParseError>) -> Option<StrOr
 fn array<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
     try_eat(code, index, &'[')?;
 
-    consume_whitespace(code, index);
     if try_eat(code, index, &']').is_ok() {
         return Ok(JSONValue::Array(vec![]));
     }
 
     let mut contents = Vec::new();
 
-    consume_whitespace(code, index);
     if let Ok(value) = expression(code, index) {
         contents.push(value);
 
-        consume_whitespace(code, index);
         while try_eat(code, index, &',').is_ok() {
-            consume_whitespace(code, index);
             let value = expression(code, index)?;
             contents.push(value);
         }
     }
-    consume_whitespace(code, index);
     try_eat(code, index, &']')?;
 
     return Ok(JSONValue::Array(contents));
@@ -207,17 +186,8 @@ fn number<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
     }
 }
 
-fn consume_whitespace<'a>(code: &'a str, index: &mut usize) {
-    if let Some(length) = code[*index..]
-            .char_indices()
-            .take_while(|(_, ch)| ch.is_whitespace())
-            .last()
-            .map(|(i, ch)| i + ch.len_utf8()) {
-        *index += length;
-    }
-}
-
 fn try_eat<'a>(code: &'a str, index: &mut usize, expected: &char) -> Result<(), ParseError> {
+    consume_whitespace(code, index);
     if let Some(found) = code[*index..].chars().next() {
         if &found == expected {
             *index += expected.len_utf8();
@@ -236,8 +206,24 @@ fn try_eat<'a>(code: &'a str, index: &mut usize, expected: &char) -> Result<(), 
     }
 }
 
-fn match_front(code: &str, segment: &str) -> bool {
-    code.len() >= segment.len() && segment.chars().zip(code.chars()).all(|(a, b)| a == b)
+fn try_match_front(code: &str, index: &mut usize, segment: &str) -> bool {
+    consume_whitespace(code, index);
+    if *index + segment.len() <= code.len() && segment.chars().zip(code[*index..].chars()).all(|(a, b)| a == b) {
+        *index += segment.len();
+        return true;
+    } else {
+        return false;
+    }
+}
+
+fn consume_whitespace<'a>(code: &'a str, index: &mut usize) {
+    if let Some(length) = code[*index..]
+            .char_indices()
+            .take_while(|(_, ch)| ch.is_whitespace())
+            .last()
+            .map(|(i, ch)| i + ch.len_utf8()) {
+        *index += length;
+    }
 }
 
 #[cfg(test)]
