@@ -19,21 +19,20 @@ pub fn parse<'a>(code: &'a str) -> impl Iterator<Item=Result<JSONValue<'a>,Parse
 
 #[derive(Debug,PartialEq)]
 pub struct ParseError<'a> {
-    msg: String,
-    token: Token<'a>,
+    pub msg: String,
+    pub token: Token<'a>,
 }
 
-impl<'a> Display for ParseError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!("ERROR {}:{}, {}", self.token.line_number, self.token.column, self.msg))
-    }
-}
+// impl<'a> Display for ParseError<'a> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.write_str(&format!("ERROR {}:{}, {}", self.token.line_number, self.token.column, self.msg))
+//     }
+// }
 
 
 #[derive(Debug,Clone,PartialEq)]
 pub struct Token<'a> {
-    pub line_number: i32,
-    pub column: usize,
+    pub index: usize,
     pub lexeme: JSONLexeme<'a>,
 }
 
@@ -50,8 +49,6 @@ pub enum JSONLexeme<'a> {
 
 fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
     let mut skip_to: Option<usize> = None;
-    let mut line_number = 0;
-    let mut line_start = 0;
 
     code.char_indices().filter_map(move |(index, ch)| {
         if skip_to
@@ -65,11 +62,6 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
 
         // whitespace
         if ch.is_whitespace() {
-            if ch == '\n' {
-                line_number += 1;
-                line_start = index;
-            }
-
             return None;
         }
 
@@ -103,8 +95,7 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
             }
 
             return Some(Token { 
-                line_number, 
-                column: index - line_start, 
+                index,
                 lexeme: match allocated_string {
                     Some(s) => JSONLexeme::AllocatedString(s),
                     None => JSONLexeme::String(&code[index + 1..end]),
@@ -116,29 +107,28 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
         for special in &SPECIAL_TOKENS {
             if code[index..].chars().nth(0).as_ref() == Some(special) {
                 skip_to = Some(index + 1);
-                return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Special(special) });
+                return Some(Token { index, lexeme: JSONLexeme::Special(special) });
             }
         }
 
-        if match_front(&code[index..], "true") {
-            skip_to = Some(index + "true".len());
-            return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Boolean(true) });
+        if match_front(&code[index..], TRUE_TOKEN) {
+            skip_to = Some(index + TRUE_TOKE_LEN);
+            return Some(Token { index, lexeme: JSONLexeme::Boolean(true) });
         }
 
-        if match_front(&code[index..], "false") {
-            skip_to = Some(index + "false".len());
-            return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Boolean(false) });
+        if match_front(&code[index..], FALSE_TOKEN) {
+            skip_to = Some(index + FALSE_TOKE_LEN);
+            return Some(Token { index, lexeme: JSONLexeme::Boolean(false) });
         }
 
-        if match_front(&code[index..], "null") {
-            skip_to = Some(index + "null".len());
-            return Some(Token { line_number, column: index - line_start, lexeme: JSONLexeme::Null });
+        if match_front(&code[index..], NULL_TOKEN) {
+            skip_to = Some(index + NULL_TOKE_LEN);
+            return Some(Token { index, lexeme: JSONLexeme::Null });
         }
 
         // numbers
         if ch.is_numeric() {
             let front_end = index + match_pred(&code[index..], |c| c.is_numeric());
-            let column = index - line_start;
 
             if front_end < code.len() - 1 && &code[front_end..front_end + 1] == "." {
                 let back_end =
@@ -146,15 +136,13 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
 
                 skip_to = Some(back_end);
                 return Some(Token {
-                    line_number,
-                    column,
+                    index,
                     lexeme: JSONLexeme::Float(code[index..back_end].parse().unwrap())
                 });
             } else {
                 skip_to = Some(front_end);
                 return Some(Token {
-                    line_number,
-                    column,
+                    index,
                     lexeme: JSONLexeme::Integer(code[index..front_end].parse().unwrap())
                 });
             }
@@ -201,7 +189,12 @@ mod match_pred_tests {
 }
 
 const SPECIAL_TOKENS: [char; 6] = ['{', '}', '[', ']', ',', ':'];
-
+const TRUE_TOKEN: &str = "true";
+const TRUE_TOKE_LEN: usize = TRUE_TOKEN.len();
+const FALSE_TOKEN: &str = "false";
+const FALSE_TOKE_LEN: usize = FALSE_TOKEN.len();
+const NULL_TOKEN: &str = "null";
+const NULL_TOKE_LEN: usize = NULL_TOKEN.len();
 
 fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValue<'a>, ParseError<'a>> {
     let next = &tokens[*index];
