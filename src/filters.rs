@@ -219,19 +219,27 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 
     let a_type_name = a.type_name();
 
-    // if let JSONValue::String(a) = a {
-    //     if let JSONValue::String(b) = b {
-    //         return JSONValue::String(a + b);
-    //     }
-    // }
-    
-    if let JSONValue::Array(a) = a {
+    if let JSONValue::String(a) = a {
+        if let JSONValue::String(b) = b {
+            return JSONValue::AllocatedString(String::from(a) + b);
+        }
+        if let JSONValue::AllocatedString(mut b) = b {
+            b.insert_str(0, a);
+            return JSONValue::AllocatedString(b);
+        }
+    } else if let JSONValue::AllocatedString(a) = a {
+        if let JSONValue::String(b) = b {
+            return JSONValue::AllocatedString(a + b);
+        }
+        if let JSONValue::AllocatedString(b) = b {
+            return JSONValue::AllocatedString(a + b.as_str());
+        }
+    } else if let JSONValue::Array(mut a) = a {
         if let JSONValue::Array(b) = b {
-            let mut res = a.clone();
             for v in b {
-                res.push(v);
+                a.push(v);
             }
-            return JSONValue::Array(res);
+            return JSONValue::Array(a);
         }
     }
 
@@ -255,17 +263,38 @@ fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         if let JSONValue::Integer(b) = b {
             return JSONValue::Integer(a - b);
         }
+        if let JSONValue::Float(b) = b {
+            return JSONValue::Float(a as f32 - b);
+        }
     }
     
     if let JSONValue::Float(a) = a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::Float(a - b as f32);
+        }
         if let JSONValue::Float(b) = b {
             return JSONValue::Float(a - b);
         }
     }
-    
+
     let a_type_name = a.type_name();
 
-    if let JSONValue::Array(a) = a {
+    if let JSONValue::String(a) = a {
+        let new_str = String::from(a);
+        if let JSONValue::String(b) = b {
+            return JSONValue::AllocatedString(new_str.replace(b, ""));
+        }
+        if let JSONValue::AllocatedString(b) = b {
+            return JSONValue::AllocatedString(new_str.replace(b.as_str(), ""));
+        }
+    } else if let JSONValue::AllocatedString(a) = a {
+        if let JSONValue::String(b) = b {
+            return JSONValue::AllocatedString(a.replace(b, ""));
+        }
+        if let JSONValue::AllocatedString(b) = b {
+            return JSONValue::AllocatedString(a.replace(b.as_str(), ""));
+        }
+    } else if let JSONValue::Array(a) = a {
         if let JSONValue::Array(b) = b {
             return JSONValue::Array(
                 a.iter()
@@ -469,14 +498,23 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn test_11() {
-    //     test_filter(
-    //         "[1, 2, 3]",
-    //         "map(.+1)",
-    //         "[2, 3, 4]"
-    //     );
-    // }
+    #[test]
+    fn test_11() {
+        test_filter(
+            "[1, 2, 3]",
+            "map(.+1)",
+            "[2, 3, 4]"
+        );
+    }
+
+    #[test]
+    fn test_12() {
+        test_filter(
+            "[\"a\", \"b\", \"c\"]",
+            "map(. + \"d\")",
+            "[\"ad\", \"bd\", \"cd\"]"
+        );
+    }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
         let input = json_parser::parse(input_json).map(|r| r.unwrap());

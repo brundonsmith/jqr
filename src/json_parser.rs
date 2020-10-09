@@ -41,6 +41,7 @@ pub struct Token<'a> {
 pub enum JSONLexeme<'a> {
     Special(&'a str),
     String(&'a str),
+    AllocatedString(String),
     Integer(i32),
     Float(f32),
     True,
@@ -197,10 +198,11 @@ fn expression<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<JSONValu
     let next = &tokens[*index];
     *index += 1;
 
-    match next.lexeme {
+    match &next.lexeme {
         JSONLexeme::String(s) => Ok(JSONValue::String(s)),
-        JSONLexeme::Integer(n) => Ok(JSONValue::Integer(n)),
-        JSONLexeme::Float(n) => Ok(JSONValue::Float(n)),
+        JSONLexeme::AllocatedString(s) => Ok(JSONValue::AllocatedString(s.clone())),
+        JSONLexeme::Integer(n) => Ok(JSONValue::Integer(*n)),
+        JSONLexeme::Float(n) => Ok(JSONValue::Float(*n)),
         JSONLexeme::True => Ok(JSONValue::Boolean(true)),
         JSONLexeme::False => Ok(JSONValue::Boolean(false)),
         JSONLexeme::Null => Ok(JSONValue::Null),

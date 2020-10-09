@@ -1,11 +1,12 @@
 
 use std::{collections::HashMap, fmt::Display};
 
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug,Clone)]
 pub enum JSONValue<'a> {
     Object(HashMap<&'a str, JSONValue<'a>>),
     Array(Vec<JSONValue<'a>>),
     String(&'a str),
+    AllocatedString(String),
     Integer(i32),
     Float(f32),
     Boolean(bool),
@@ -18,6 +19,7 @@ impl<'a> JSONValue<'a> {
             JSONValue::Object(_) => "object",
             JSONValue::Array(_) => "array",
             JSONValue::String(_) => "string",
+            JSONValue::AllocatedString(_) => "string",
             JSONValue::Integer(_) => "number",
             JSONValue::Float(_) => "float",
             JSONValue::Boolean(_) => "boolean",
@@ -25,6 +27,28 @@ impl<'a> JSONValue<'a> {
         }
     }
 }
+
+impl<'a> PartialEq for JSONValue<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            JSONValue::Object(x1) => match other { JSONValue::Object(x2) => x1.eq(&x2), _ => false },
+            JSONValue::Array(x1) => match other { JSONValue::Array(x2) => x1.iter().enumerate().all(|(index, el)| Some(el).eq(&x2.get(index))), _ => false },
+            JSONValue::String(x1) => match other { JSONValue::String(x2) => x1.eq(x2), JSONValue::AllocatedString(x2) => x1.eq(&x2), _ => false },
+            JSONValue::AllocatedString(x1) => match other { JSONValue::String(x2) => x1.eq(x2), JSONValue::AllocatedString(x2) => x1.eq(x2), _ => false },
+            JSONValue::Integer(x1) => match *other { JSONValue::Integer(x2) => x1.eq(&x2), _ => false },
+            JSONValue::Float(x1) => match *other { JSONValue::Float(x2) => x1.eq(&x2), _ => false },
+            JSONValue::Boolean(x1) => match *other { JSONValue::Boolean(x2) => x1.eq(&x2), _ => false },
+            JSONValue::Null => match *other { JSONValue::Null => true, _ => false },
+        }
+    }
+}
+
+#[test]
+fn test_1() {
+    assert_eq!(JSONValue::String("foo"), JSONValue::AllocatedString(String::from("foo")));
+}
+
+impl<'a> Eq for JSONValue<'a> { }
 
 impl<'a> Display for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -75,9 +99,8 @@ fn fmt_inner<'a>(val: &JSONValue<'a>, indentation: i32, f: &mut std::fmt::Format
             write_newline_and_indentation(f, indentation)?;
             f.write_str("]")
         },
-        JSONValue::String(s) => {
-            f.write_str(&format!("\"{}\"", s))
-        },
+        JSONValue::String(s) => f.write_str(&format!("\"{}\"", s)),
+        JSONValue::AllocatedString(s) => f.write_str(&format!("\"{}\"", s)),
         JSONValue::Integer(n) => f.write_str(&format!("{}", n)),
         JSONValue::Float(n) => f.write_str(&format!("{}", n)),
         JSONValue::Boolean(b) => f.write_str(&format!("{}", b)),
