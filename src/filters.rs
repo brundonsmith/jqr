@@ -1,3 +1,5 @@
+use std::{collections::hash_map, iter::Map, ops::Range};
+
 use crate::model::{Filter, JSONValue, StrOrString};
 
 
@@ -169,20 +171,40 @@ fn applied_to_combinations<'a>(values: impl 'a + Iterator<Item=JSONValue<'a>>, l
     }).flatten())
 }
 
-fn keys<'a>(val: JSONValue<'a>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
+
+
+enum KeysIterator<'a>{
+    Object(Map<hash_map::IntoIter<StrOrString<'a>, JSONValue<'a>>, fn((StrOrString<'a>, JSONValue<'a>)) -> JSONValue<'a>>),
+    Array(Map<Range<usize>, fn(usize) -> JSONValue<'a>>),
+}
+
+impl<'a> Iterator for KeysIterator<'a> {
+    type Item = JSONValue<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            KeysIterator::Object(i) => i.next(),
+            KeysIterator::Array(i) => i.next(),
+        }
+    }
+}
+
+fn keys<'a>(val: JSONValue<'a>) -> KeysIterator<'a> {
     if let JSONValue::Object(map) = val {
-        return Box::new(map.into_iter().map(|(key, _)| match key {
+        return KeysIterator::Object(map.into_iter().map(|(key, _)| match key {
             StrOrString::Str(s) => JSONValue::String(s),
             StrOrString::String(s) => JSONValue::AllocatedString(s)
         }));
     }
     
     if let JSONValue::Array(arr) = val {
-        return Box::new((0..arr.len()).map(|i| JSONValue::Integer(i as i32)));
+        return KeysIterator::Array((0..arr.len()).map(|i| JSONValue::Integer(i as i32)));
     }
 
     panic!(format!("Cannot get keys from a value of type {}", val.type_name()));
 }
+
+
 
 fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
