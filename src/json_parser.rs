@@ -66,7 +66,7 @@ fn object<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
     if try_eat(code, index, &'}').is_ok() {
         return Ok(JSONValue::Object(contents));
     } else {
-        let key = string(code, index);
+        let key = expression(code, index);
 
         if let Some(prop) = as_str_or_string(key) {
             try_eat(code, index, &':')?;
@@ -185,16 +185,9 @@ fn number<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
 
 fn try_eat<'a>(code: &'a str, index: &mut usize, expected: &char) -> Result<(), ParseError> {
     consume_whitespace(code, index);
-    if let Some(found) = code[*index..].chars().next() {
-        if &found == expected {
-            *index += expected.len_utf8();
-            Ok(())
-        } else {
-            return Err(ParseError { 
-                msg: format!("Expected '{}', found '{}'", expected, found), 
-                index: *index
-            });
-        }
+    if Some(*expected) == code[*index..].chars().next() {
+        *index += expected.len_utf8();
+        Ok(())
     } else {
         return Err(ParseError { 
             msg: format!("Expected '{}'", expected), 
