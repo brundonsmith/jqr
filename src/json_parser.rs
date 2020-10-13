@@ -61,97 +61,94 @@ fn expression<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, Par
 fn object<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
     try_eat(code, index, &'{')?;
 
-    if try_eat(code, index, &'}').is_ok() {
-        return Ok(JSONValue::Object(HashMap::new()));
-    }
-
     let mut contents = HashMap::new();
 
-    let key = expression(code, index);
+    if try_eat(code, index, &'}').is_ok() {
+        return Ok(JSONValue::Object(contents));
+    } else {
+        let key = string(code, index);
 
-    if let Some(prop) = as_str_or_string(key) {
-        try_eat(code, index, &':')?;
-        let value = expression(code, index)?;
+        if let Some(prop) = as_str_or_string(key) {
+            try_eat(code, index, &':')?;
+            let value = expression(code, index)?;
 
-        contents.insert(prop, value);
+            contents.insert(prop, value);
 
-        while try_eat(code, index, &',').is_ok() {
-            let key = expression(code, index);
+            while try_eat(code, index, &',').is_ok() {
+                let key = expression(code, index);
 
-            if let Some(prop) = as_str_or_string(key) {
-                try_eat(code, index, &':')?;
-                let value = expression(code, index)?;
+                if let Some(prop) = as_str_or_string(key) {
+                    try_eat(code, index, &':')?;
+                    let value = expression(code, index)?;
 
-                contents.insert(prop, value);
-            } else {
-                return Err(ParseError {
-                    msg: String::from("Expected object property after ','"),
-                    index: *index,
-                });
+                    contents.insert(prop, value);
+                } else {
+                    return Err(ParseError {
+                        msg: String::from("Expected object property after ','"),
+                        index: *index,
+                    });
+                }
             }
         }
+        try_eat(code, index, &'}')?;
+        
+        return Ok(JSONValue::Object(contents));
     }
-    try_eat(code, index, &'}')?;
-    
-    return Ok(JSONValue::Object(contents));
 }
 
 fn as_str_or_string<'a>(next: Result<JSONValue<'a>, ParseError>) -> Option<StrOrString<'a>> {
-    if let Ok(JSONValue::String(prop)) = next {
-        return Some(StrOrString::Str(prop));
-    } else if let Ok(JSONValue::AllocatedString(prop)) = next {
-        return Some(StrOrString::String(prop));
-    } else {
-        return None;
+    match next {
+        Ok(JSONValue::String(prop)) => Some(StrOrString::Str(prop)),
+        Ok(JSONValue::AllocatedString(prop)) => Some(StrOrString::String(prop)),
+        _ => None
     }
 }
 
 fn array<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
     try_eat(code, index, &'[')?;
 
-    if try_eat(code, index, &']').is_ok() {
-        return Ok(JSONValue::Array(vec![]));
-    }
-
     let mut contents = Vec::new();
 
-    if let Ok(value) = expression(code, index) {
-        contents.push(value);
-
-        while try_eat(code, index, &',').is_ok() {
-            let value = expression(code, index)?;
+    if try_eat(code, index, &']').is_ok() {
+        return Ok(JSONValue::Array(contents));
+    } else {
+        if let Ok(value) = expression(code, index) {
             contents.push(value);
-        }
-    }
-    try_eat(code, index, &']')?;
 
-    return Ok(JSONValue::Array(contents));
+            while try_eat(code, index, &',').is_ok() {
+                let value = expression(code, index)?;
+                contents.push(value);
+            }
+        }
+        try_eat(code, index, &']')?;
+
+        return Ok(JSONValue::Array(contents));
+    }
 }
 
 fn string<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
+    let contents_start = *index + 1;
+
     let mut escape_next = false;
     let mut allocated_string: Option<String> = None;
-    let contents_start = *index + 1;
     let mut end = contents_start;
-    for (i, c) in code[*index + 1..].char_indices() {
-        let current_index = contents_start + i;
+    for (i, c) in code[contents_start..].char_indices() {
         if c == '\\' && !escape_next {
             escape_next = true;
             if allocated_string.is_none() {
-                allocated_string = Some(String::from(&code[contents_start..current_index]));
+                allocated_string = Some(String::from(&code[contents_start..contents_start + i]));
             }
         } else {
             if c == '"' && !escape_next {
                 end = contents_start + i;
-                *index = current_index + 1;
+                *index = end + 1;
                 break;
             }
             
-            match &mut allocated_string {
-                Some(s) => s.push(c),
-                None => {},
-            };
-
+            if let Some(s) = &mut allocated_string {
+                s.push(c);
+            }
+            
             escape_next = false;
         }
     }
@@ -208,7 +205,8 @@ fn try_eat<'a>(code: &'a str, index: &mut usize, expected: &char) -> Result<(), 
 
 fn try_match_front(code: &str, index: &mut usize, segment: &str) -> bool {
     consume_whitespace(code, index);
-    if *index + segment.len() <= code.len() && segment.chars().zip(code[*index..].chars()).all(|(a, b)| a == b) {
+    let rest = &code[*index..];
+    if segment.len() <= rest.len() && segment.chars().zip(rest.chars()).all(|(a, b)| a == b) {
         *index += segment.len();
         return true;
     } else {

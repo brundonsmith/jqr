@@ -190,18 +190,16 @@ impl<'a> Iterator for KeysIterator<'a> {
 }
 
 fn keys<'a>(val: JSONValue<'a>) -> KeysIterator<'a> {
-    if let JSONValue::Object(map) = val {
-        return KeysIterator::Object(map.into_iter().map(|(key, _)| match key {
-            StrOrString::Str(s) => JSONValue::String(s),
-            StrOrString::String(s) => JSONValue::AllocatedString(s)
-        }));
+    match val {
+        JSONValue::Object(map) => 
+            KeysIterator::Object(map.into_iter().map(|(key, _)| match key {
+                StrOrString::Str(s) => JSONValue::String(s),
+                StrOrString::String(s) => JSONValue::AllocatedString(s)
+            })),
+        JSONValue::Array(arr) => 
+            KeysIterator::Array((0..arr.len()).map(|i| JSONValue::Integer(i as i32))),
+        _ => panic!(format!("Cannot get keys from a value of type {}", val.type_name()))
     }
-    
-    if let JSONValue::Array(arr) = val {
-        return KeysIterator::Array((0..arr.len()).map(|i| JSONValue::Integer(i as i32)));
-    }
-
-    panic!(format!("Cannot get keys from a value of type {}", val.type_name()));
 }
 
 
