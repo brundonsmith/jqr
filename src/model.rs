@@ -62,14 +62,10 @@ impl<'a> PartialOrd for JSONValue<'a> {
         let cmp_key_other = type_cmp_key(other);
         if cmp_key_self != cmp_key_other {
             return cmp_key_self.partial_cmp(&cmp_key_other);
-        }
-
-
-        if let JSONValue::String(s) = self {
+        } else if let JSONValue::String(s) = self {
             if let JSONValue::String(other) = other {
                 return s.partial_cmp(other);
-            }
-            if let JSONValue::AllocatedString(other) = other {
+            } else if let JSONValue::AllocatedString(other) = other {
                 return s.partial_cmp(&other.as_str());
             }
         } else if let JSONValue::AllocatedString(s) = self {
@@ -79,33 +75,23 @@ impl<'a> PartialOrd for JSONValue<'a> {
             if let JSONValue::AllocatedString(other) = other {
                 return s.partial_cmp(other);
             }
-        }
-
-        if let JSONValue::Integer(s) = self {
+        } else if let JSONValue::Integer(s) = self {
             if let JSONValue::Integer(other) = other {
                 return s.partial_cmp(other);
-            }
-            if let JSONValue::Float(other) = other {
+            } else if let JSONValue::Float(other) = other {
                 return (*s as f32).partial_cmp(other);
             }
-        }
-        
-        if let JSONValue::Float(s) = self {
+        } else if let JSONValue::Float(s) = self {
             if let JSONValue::Integer(other) = other {
                 return s.partial_cmp(&(*other as f32));
-            }
-            if let JSONValue::Float(other) = other {
+            } else if let JSONValue::Float(other) = other {
                 return s.partial_cmp(other);
             }
-        }
-
-        if let JSONValue::Array(s) = self {
+        } else if let JSONValue::Array(s) = self {
             if let JSONValue::Array(other) = other {
                 todo!()
             }
-        }
-
-        if let JSONValue::Object(s) = self {
+        } else if let JSONValue::Object(s) = self {
             if let JSONValue::Object(other) = other {
                 todo!()
             }
