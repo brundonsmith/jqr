@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
-use std::{fs::File, io::Read, io::Write};
+use std::{fs::File, io::Read, io::Write, time::Instant};
 
 use filters::apply_filter;
+use serde_json::Value;
 
 extern crate clap;
 
-mod model;
 mod json_parser;
 mod filter_parser;
 mod filters;
@@ -42,8 +42,10 @@ fn main() -> Result<(),()> {
     let json_str = if matches.is_present("JSON") {
         match matches.value_of("kind").unwrap() {
             "file" => {
+                let mark = Instant::now();
                 let mut file = File::open(matches.value_of("JSON").unwrap()).map_err(|_| ())?;
                 file.read_to_string(&mut json_buffer).map_err(|_| ())?;
+                println!("File read took: {}ms", mark.elapsed().as_millis());
     
                 json_buffer.as_str()
             },
@@ -58,39 +60,50 @@ fn main() -> Result<(),()> {
         
         json_buffer.as_str()
     };
-    
-    let json_parsed = json_parser::parse(json_str).map(|r| {
+
+    // let mark = Instant::now();
+    // let json_parsed: Vec<Value> = json_parser::parse(json_str).map(|r| {
+    //     match r {
+    //         Ok(val) => val,
+    //         Err(e) => panic!(format!("Error parsing JSON at {}:{}\t{:?}", e.line(), e.column(), e.classify()))
+    //     }
+    // }).collect();
+    // println!("Serde JSON parse took: {}ms", mark.elapsed().as_millis());
+
+    // let mark = Instant::now();
+    // let filter_str = matches.value_of("PATTERN").unwrap();
+    // let filter_parsed = filter_parser::parse(filter_str).unwrap();
+    // println!("Filter parse took: {}ms", mark.elapsed().as_millis());
+
+    // let json_parsed_a = json_parsed.clone();
+    // let mark = Instant::now();
+    // json_parsed_a.into_iter().for_each(std::mem::drop);
+    // println!("Collecting took: {}ms", mark.elapsed().as_millis());
+
+    // let json_parsed_b = json_parsed.clone();
+    // let mark = Instant::now();
+    // Box::new(json_parsed_b.into_iter()).for_each(std::mem::drop);
+    // println!("Boxed collecting took: {}ms", mark.elapsed().as_millis());
+
+    // let mark = Instant::now();
+    // let filtered: Vec<Value> = apply_filter(&filter_parsed, json_parsed.into_iter()).collect();
+    // println!("Filtering took: {}ms", mark.elapsed().as_millis());
+
+    let json_parsed: Vec<Value> = json_parser::parse(json_str).map(|r| {
         match r {
             Ok(val) => val,
-            Err(e) => {
-                let mut line_number = 0;
-                let mut column_number = 0;
-
-                for ch in json_str.chars().take(e.token.index) {
-                    if ch == '\n' {
-                        line_number += 1;
-                        column_number = 0;
-                    } else {
-                        column_number += 1;
-                    }
-                }
-
-                panic!(format!("Error parsing JSON at {}:{}\t{}", line_number, column_number, e.msg));
-            }
+            Err(e) => panic!(format!("Error parsing JSON at {}:{}\t{:?}", e.line(), e.column(), e.classify()))
         }
-    });
+    }).collect();
 
     let filter_str = matches.value_of("PATTERN").unwrap();
     let filter_parsed = filter_parser::parse(filter_str).unwrap();
 
-    let filtered = apply_filter(&filter_parsed, json_parsed);
+    let filtered = apply_filter(&filter_parsed, json_parsed.into_iter());
 
     for val in filtered {
-        std::io::stdout().write(format!("{}", val).as_bytes()).map_err(|_| ())?;
+        std::io::stdout().write(format!("{}\n", val).as_bytes()).map_err(|_| ())?;
     }
-
-    std::io::stdout().write("\n".as_bytes()).map_err(|_| ())?;
 
     Ok(())
 }
-

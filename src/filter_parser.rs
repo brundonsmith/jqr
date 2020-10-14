@@ -1,6 +1,8 @@
 use std::fmt::Display;
 
-use crate::model::Filter;
+use serde_json::{Number, Value};
+
+use crate::filters::Filter;
 
 
 
@@ -412,12 +414,12 @@ fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter
 
     if let Some(FilterLexeme::Number(n)) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
-        return Ok(Filter::Literal(crate::model::JSONValue::Integer(*n as i32)));
+        return Ok(Filter::Literal(Value::Number(Number::from(*n))));
     }
 
     if let Some(FilterLexeme::Identifier { s, quoted: true}) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
-        return Ok(Filter::Literal(crate::model::JSONValue::String(s)));
+        return Ok(Filter::Literal(Value::String(String::from(*s))));
     }
     
     return Err(ParseError {
@@ -446,7 +448,9 @@ fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Re
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Filter, JSONValue};
+    use serde_json::{Number, Value};
+
+    use crate::filters::Filter;
     use crate::filter_parser::parse;
 
     #[test]
@@ -537,7 +541,7 @@ mod tests {
                 Filter::Map(
                     Box::new(Filter::Add { 
                         left: Box::new(Filter::ObjectIdentifierIndex { identifier: "price", optional: false }),
-                        right: Box::new(Filter::Literal(JSONValue::Integer(10)))
+                        right: Box::new(Filter::Literal(Value::Number(Number::from(10))))
                     })
                 )
             ]))
