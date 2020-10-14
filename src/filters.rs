@@ -50,18 +50,18 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::Identity => Box::new(values),
         Filter::ObjectIdentifierIndex { identifier, optional } => 
             Box::new(values.map(move |val| -> Value {
-                if let Value::Object(contents) = val {
-                    return contents.get(*identifier).unwrap().clone();
+                if let Value::Object(mut contents) = val {
+                    contents.remove(*identifier).unwrap()
                 } else if *optional && val == Value::Null {
-                    return Value::Null;
+                    Value::Null
                 } else {
-                    panic!(format!("Error: Object identifier index can only be used on values of type Object; got {}", val));
+                    panic!(format!("Error: Object identifier index can only be used on values of type Object; got {}", val))
                 }
             })),
         Filter::ArrayIndex { index } => 
             Box::new(values.map(move |val| -> Value {
                 if let Value::Array(contents) = val {
-                    return contents[*index].clone();
+                    return contents[*index].clone(); // TODO: Remove from Vec here as in Map above, to avoid clone()
                 } else {
                     panic!(format!("Error: Array index can only be used on values of type Array; got {}", val));
                 }
@@ -113,7 +113,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 .flatten())
         },
         Filter::Pipe(filters) => 
-            Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=Value>> {
+            Box::new(values.map(move |val| {
                 let mut result: Box<dyn 'a + Iterator<Item=Value>> = Box::new(std::iter::once(val));
 
                 for f in filters {
@@ -171,11 +171,10 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 _ => panic!(format!("Cannot map over value {}", val))
             }
         })),
-        Filter::Select(pred) => Box::new(values.filter(move |val| {
-            let mut inner_vals = apply_filter(pred, std::iter::once(val.clone()));
-
-            inner_vals.all(|v| v == Value::Bool(true))
-        }))
+        Filter::Select(pred) => Box::new(values.filter(move |val|
+            apply_filter(pred, std::iter::once(val.clone()))
+                .all(|v| v == Value::Bool(true))
+        ))
     }
 }
 
@@ -184,13 +183,13 @@ fn cmp(a: &Value, b: &Value) -> Ordering {
     let cmp_key_b = type_cmp_key(b);
     if cmp_key_a != cmp_key_b {
         return cmp_key_a.cmp(&cmp_key_b);
-    } else if let Value::String(a) = a {
-        if let Value::String(b) = b {
-            return a.cmp(b);
-        }
     } else if let Value::Number(a) = a {
         if let Value::Number(b) = b {
             return a.as_f64().partial_cmp(&b.as_f64()).unwrap_or(Ordering::Equal);
+        }
+    } else if let Value::String(a) = a {
+        if let Value::String(b) = b {
+            return a.cmp(b);
         }
     } else if let Value::Array(a) = a {
         if let Value::Array(b) = b {
@@ -224,7 +223,7 @@ fn combinations<'a>(a: impl Iterator<Item=Value>, b: impl Iterator<Item=Value>) 
     let mut index_a = 0;
     let mut index_b = 0;
 
-    return std::iter::from_fn(move || {
+    std::iter::from_fn(move || {
         if index_a < vec_a.len() && index_b < vec_b.len() {
             let next = (vec_a[index_a].clone(), vec_b[index_b].clone());
 
@@ -235,11 +234,11 @@ fn combinations<'a>(a: impl Iterator<Item=Value>, b: impl Iterator<Item=Value>) 
                 index_b = 0;
             }
 
-            return Some(next);
+            Some(next)
         } else {
-            return None;
+            None
         }
-    });
+    })
 }
 
 fn applied_to_combinations<'a>(values: impl 'a + Iterator<Item=Value>, left: &'a Filter<'a>, right: &'a Filter<'a>, func: &'static impl Fn((Value, Value)) -> Value) -> Box<dyn 'a + Iterator<Item=Value>> {
