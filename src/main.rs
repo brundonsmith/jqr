@@ -73,6 +73,7 @@ fn main() -> Result<(),()> {
     //         Err(e) => panic!(format!("Error parsing JSON at {}:{}\t{:?}", e.line(), e.column(), e.classify()))
     //     }
     // }).collect();
+    // std::mem::forget(json_str);
     // println!("JSON parse took: {}ms", mark.elapsed().as_millis());
 
     // let filter_str = matches.value_of("PATTERN").unwrap();
@@ -80,16 +81,16 @@ fn main() -> Result<(),()> {
 
     // let json_parsed_a = json_parsed.clone();
     // let mark = Instant::now();
-    // json_parsed_a.into_iter().for_each(std::mem::drop);
+    // json_parsed_a.into_iter().for_each(std::mem::forget);
     // println!("Collecting took: {}ms", mark.elapsed().as_millis());
 
     // let json_parsed_b = json_parsed.clone();
     // let mark = Instant::now();
-    // Box::new(json_parsed_b.into_iter()).for_each(std::mem::drop);
+    // Box::new(json_parsed_b.into_iter()).for_each(std::mem::forget);
     // println!("Boxed collecting took: {}ms", mark.elapsed().as_millis());
 
     // let mark = Instant::now();
-    // apply_filter(&filter_parsed, json_parsed.into_iter()).map(std::mem::forget);
+    // apply_filter(&filter_parsed, json_parsed.into_iter()).for_each(std::mem::forget);
     // println!("Filtering took: {}ms", mark.elapsed().as_millis());
 
     let json_parsed = json_parser::parse(json_str).map(|r| {
@@ -98,6 +99,7 @@ fn main() -> Result<(),()> {
             Err(e) => panic!(format!("Error parsing JSON at {}:{}\t{:?}", e.line(), e.column(), e.classify()))
         }
     });
+    std::mem::forget(json_str);
 
     let filter_str = matches.value_of("PATTERN").unwrap();
     let filter_parsed = filter_parser::parse(filter_str).unwrap();
