@@ -51,7 +51,9 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::ObjectIdentifierIndex { identifier, optional } => 
             Box::new(values.map(move |val| -> Value {
                 if let Value::Object(mut contents) = val {
-                    contents.remove(*identifier).unwrap()
+                    let result = contents.remove(*identifier).unwrap();
+                    std::mem::forget(contents);
+                    result
                 } else if *optional && val == Value::Null {
                     Value::Null
                 } else {
