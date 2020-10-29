@@ -151,7 +151,7 @@ fn string<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
     let mut escape_next = false;
     let mut end = string_contents_start;
     for (i, c) in code[string_contents_start..].char_indices() {
-        if !escape_next {  // control-characters
+        if !escape_next {
             if c == '\\' {
                 escape_next = true;
                 needs_escaping = true;
@@ -161,8 +161,6 @@ fn string<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
                 break;
             }
         } else {
-            // TODO: Handle escapes other than \ and "
-
             escape_next = false;
         }
     }
@@ -349,7 +347,7 @@ pub fn encode_escapes<'a>(raw: &'a str) -> String {
     let mut new_str = String::with_capacity(raw.len());
     let new_str_ref = &mut new_str;
 
-    raw.char_indices().for_each(move |(i, c)| {
+    raw.chars().for_each(move |c| {
         for (ie, e) in ESCAPE_CHAR_VALUES.iter().enumerate() {
             if c == *e {
                 new_str_ref.push('\\');

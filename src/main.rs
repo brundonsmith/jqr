@@ -89,15 +89,14 @@ fn main() -> Result<(),()> {
         return rc;
     });
 
+    if no_free {
+        std::mem::forget(json_str);
+    }
 
 
 
     // let mark = Instant::now();
     // let json_parsed: Vec<Rc<JSONValue>> = json_parsed.collect();
-
-    // if no_free {
-    //     std::mem::forget(json_str);
-    // }
 
     // println!("JSON parse took: {}ms", mark.elapsed().as_millis());
 
@@ -115,9 +114,6 @@ fn main() -> Result<(),()> {
     // println!("Filtering took: {}ms", mark.elapsed().as_millis());
 
 
-    if no_free {
-        std::mem::forget(json_str);
-    }
 
     let filter_str = matches.value_of("PATTERN").unwrap();
     let filter_parsed = filter_parser::parse(filter_str).unwrap();
