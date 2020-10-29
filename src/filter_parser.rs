@@ -1,14 +1,13 @@
-use std::fmt::Display;
-
-use serde_json::{Number, Value};
+use std::{fmt::Display, rc::Rc};
 
 use crate::filters::Filter;
+use crate::json_parser::JSONValue;
 
 
 
 pub fn parse<'a>(code: &'a str) -> Result<Filter,ParseError> {
     let mut index = 0;
-    filter(&tokenize(code).collect(), &mut index)
+    filter(&tokenize(code).collect(), &mut index).map(|f| optimize(&f))
 }
 
 
@@ -414,12 +413,12 @@ fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter
 
     if let Some(FilterLexeme::Number(n)) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
-        return Ok(Filter::Literal(Value::Number(Number::from(*n))));
+        return Ok(Filter::Literal(Rc::new(JSONValue::Integer(*n as i32))));
     }
 
     if let Some(FilterLexeme::Identifier { s, quoted: true}) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
-        return Ok(Filter::Literal(Value::String(String::from(*s))));
+        return Ok(Filter::Literal(Rc::new(JSONValue::String(*s))));
     }
     
     return Err(ParseError {
@@ -446,11 +445,45 @@ fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Re
 }
 
 
+fn optimize<'a>(filter: &Filter<'a>) -> Filter<'a> {
+    match filter {
+        Filter::Map(inner) => Filter::Map(Box::new(optimize(inner))),
+        Filter::Select(inner) => Filter::Select(Box::new(optimize(inner))),
+        Filter::Comma(vec) => Filter::Comma(vec.iter().map(optimize).collect()),
+        Filter::GreaterThan { left, right } => Filter::GreaterThan { left: Box::new(optimize(left)), right: Box::new(optimize(right)) },
+
+        // Filter::Pipe(vec) => {
+        //     if vec.iter().all(|f| matches!(f, Filter::ObjectIdentifierIndex { identifier: _, optional: _ })) {
+        //         Filter::_PropertyChain(vec.into_iter().map(|f| {
+        //             if let Filter::ObjectIdentifierIndex { identifier, optional } = f {
+        //                 (*identifier, *optional)
+        //             } else {
+        //                 unreachable!()
+        //             }
+        //         }).collect())
+        //     } else {
+        //         Filter::Pipe(vec.iter().map(optimize).collect())
+        //     }
+        // },
+
+        // Filter::Map(inner) => 
+        //     match inner.as_ref() {
+        //         Filter::Select(pred) => {
+        //             println!("_MapSelect added");
+        //             Filter::_MapSelect(Box::new(optimize(pred)))
+        //         },
+        //         _ => filter.clone()
+        //     },
+
+        _ => filter.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use serde_json::{Number, Value};
+        use std::rc::Rc;
 
-    use crate::filters::Filter;
+use crate::{filters::Filter, json_parser::JSONValue};
     use crate::filter_parser::parse;
 
     #[test]
@@ -541,7 +574,7 @@ mod tests {
                 Filter::Map(
                     Box::new(Filter::Add { 
                         left: Box::new(Filter::ObjectIdentifierIndex { identifier: "price", optional: false }),
-                        right: Box::new(Filter::Literal(Value::Number(Number::from(10))))
+                        right: Box::new(Filter::Literal(Rc::new(JSONValue::Integer(10))))
                     })
                 )
             ]))

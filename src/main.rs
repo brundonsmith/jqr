@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 
-use std::{fs::File, io::BufReader, io::Read, io::Write, time::Instant};
+use std::{fs::File, io::BufReader, io::Read, io::Write, rc::Rc, time::Instant};
 
-use filters::apply_filter;
-use json_parser::delimit_values;
-use serde_json::Value;
+use filters::apply_filter;//, apply_filter_hardcoded};
+use json_parser::JSONValue;
 
 extern crate clap;
 
@@ -21,23 +20,36 @@ fn main() -> Result<(),()> {
             clap::Arg::with_name("PATTERN")
                 .help("The query pattern")
                 .required(true)
+                // .default_value("map(select(.base.Attack > 100)) | map(.name.english)")
                 .display_order(0),
         )
         .arg(
             clap::Arg::with_name("JSON")
                 .help("File name or inlined JSON string")
                 .required(false)
+                // .default_value("/Users/brundolf/Downloads/query-json-master/benchmarks/big.json")
                 .display_order(1),
         )
         .arg(
             clap::Arg::with_name("kind")
+                .long("kind")
                 .help("Type of input")
                 .required(false)
                 .display_order(0)
                 .default_value("file")
                 .possible_values(&["file", "inline"]),
         )
+        .arg(
+            clap::Arg::with_name("no-free")
+                .long("no-free")
+                .help("DANGER")
+                .required(false)
+                .takes_value(false)
+                .display_order(10),
+        )
         .get_matches();
+
+    let no_free = matches.is_present("no-free");
 
     let mut json_buffer = String::new();
     let json_str = if matches.is_present("JSON") {
@@ -62,44 +74,50 @@ fn main() -> Result<(),()> {
         json_buffer.as_str()
     };
 
-    // let mark = Instant::now();
-    // let json_delimited: Vec<&str> = json_parser::delimit_values(json_str).collect();
-    // println!("JSON delimiting took: {}ms", mark.elapsed().as_millis());
+    let json_parsed = json_parser::parse(json_str, no_free).map(|r| {
+        match r {
+            Ok(val) => val,
+            Err(e) => panic!(format!("Error parsing JSON at"))// {}:{}\t{:?}", e.line(), e.column(), e.classify()))
+        }
+    }).map(|v| {
+        let rc = Rc::new(v);
+
+        if no_free {
+            std::mem::forget(rc.clone());
+        }
+
+        return rc;
+    });
+
+
+
 
     // let mark = Instant::now();
-    // let json_parsed: Vec<Value> = json_parser::parse(json_str).map(|r| {
-    //     match r {
-    //         Ok(val) => val,
-    //         Err(e) => panic!(format!("Error parsing JSON at {}:{}\t{:?}", e.line(), e.column(), e.classify()))
-    //     }
-    // }).collect();
-    // std::mem::forget(json_str);
+    // let json_parsed: Vec<Rc<JSONValue>> = json_parsed.collect();
+
+    // if no_free {
+    //     std::mem::forget(json_str);
+    // }
+
     // println!("JSON parse took: {}ms", mark.elapsed().as_millis());
 
     // let filter_str = matches.value_of("PATTERN").unwrap();
     // let filter_parsed = filter_parser::parse(filter_str).unwrap();
 
-    // let json_parsed_a = json_parsed.clone();
     // let mark = Instant::now();
-    // json_parsed_a.into_iter().for_each(std::mem::forget);
-    // println!("Collecting took: {}ms", mark.elapsed().as_millis());
-
-    // let json_parsed_b = json_parsed.clone();
-    // let mark = Instant::now();
-    // Box::new(json_parsed_b.into_iter()).for_each(std::mem::forget);
-    // println!("Boxed collecting took: {}ms", mark.elapsed().as_millis());
-
-    // let mark = Instant::now();
-    // apply_filter(&filter_parsed, json_parsed.into_iter()).for_each(std::mem::forget);
+    // apply_filter(&filter_parsed, json_parsed.into_iter()).for_each(|v| {
+    //     if no_free {
+    //         std::mem::forget(v);
+    //     } else {
+    //         std::mem::drop(v);
+    //     }
+    // });
     // println!("Filtering took: {}ms", mark.elapsed().as_millis());
 
-    let json_parsed = json_parser::parse(json_str).map(|r| {
-        match r {
-            Ok(val) => val,
-            Err(e) => panic!(format!("Error parsing JSON at {}:{}\t{:?}", e.line(), e.column(), e.classify()))
-        }
-    });
-    std::mem::forget(json_str);
+
+    if no_free {
+        std::mem::forget(json_str);
+    }
 
     let filter_str = matches.value_of("PATTERN").unwrap();
     let filter_parsed = filter_parser::parse(filter_str).unwrap();
@@ -107,9 +125,12 @@ fn main() -> Result<(),()> {
     let filtered = apply_filter(&filter_parsed, json_parsed);
 
     for val in filtered {
-        std::io::stdout().write(serde_json::to_string_pretty(&val).unwrap().as_bytes()).map_err(|_| ())?;
+        std::io::stdout().write(format!("{}", val).as_bytes()).map_err(|_| ())?;
         std::io::stdout().write("\n".as_bytes()).map_err(|_| ())?;
-        std::mem::forget(val);
+
+        if no_free {
+            std::mem::forget(val);
+        }
     }
 
     Ok(())
