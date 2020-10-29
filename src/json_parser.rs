@@ -146,31 +146,37 @@ fn array<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONValu
 
 fn string<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
     let string_contents_start = *index + 1;
+    let mut current_string_segment_start = *index + 1;
 
     let mut escape_next = false;
     let mut allocated_string: Option<String> = None;
     let mut end = string_contents_start;
     for (i, c) in code[string_contents_start..].char_indices() {
-        if c == '\\' && !escape_next {
-            escape_next = true;
-            if allocated_string.is_none() {
-                // println!("Allocating string because of {}: {}", c, &code[string_contents_start..string_contents_start + i]);
-                allocated_string = Some(String::from(&code[string_contents_start..string_contents_start + i]));
-            }
-            // TODO: Handle escapes other than \ and "
-        } else {
-            if c == '"' && !escape_next {
+        if !escape_next {  // control-characters
+            if c == '\\' {
+                escape_next = true;
+    
+                if let Some(s) = &mut allocated_string {
+                    s.push_str(&code[current_string_segment_start..string_contents_start + i]);
+                } else {
+                    // println!("Allocating string because of {}: {}", c, &code[string_contents_start..string_contents_start + i]);
+                    allocated_string = Some(String::from(&code[string_contents_start..string_contents_start + i]));
+                }
+                current_string_segment_start = string_contents_start + i + 1;
+            } else if c == '"' {
                 end = string_contents_start + i;
                 *index = end + 1;
                 break;
             }
-            
-            if let Some(s) = &mut allocated_string {
-                s.push(c);
-            }
-            
+        } else {
+            // TODO: Handle escapes other than \ and "
+
             escape_next = false;
         }
+    }
+
+    if let Some(s) = &mut allocated_string {
+        s.push_str(&code[current_string_segment_start..end]);
     }
 
     Ok(match allocated_string {
