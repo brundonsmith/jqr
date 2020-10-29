@@ -3,7 +3,7 @@
 use std::{fs::File, io::BufReader, io::Read, io::Write, rc::Rc, time::Instant};
 
 use filters::apply_filter;//, apply_filter_hardcoded};
-use json_parser::JSONValue;
+use json_parser::{JSONValue, write_json};
 
 extern crate clap;
 
@@ -21,23 +21,50 @@ fn main() -> Result<(),()> {
                 .help("The query pattern")
                 .required(true)
                 // .default_value("map(select(.base.Attack > 100)) | map(.name.english)")
-                .display_order(0),
         )
         .arg(
             clap::Arg::with_name("JSON")
                 .help("File name or inlined JSON string")
                 .required(false)
                 // .default_value("/Users/brundolf/Downloads/query-json-master/benchmarks/big.json")
-                .display_order(1),
         )
         .arg(
             clap::Arg::with_name("kind")
                 .long("kind")
                 .help("Type of input")
                 .required(false)
-                .display_order(0)
                 .default_value("file")
                 .possible_values(&["file", "inline"]),
+        )
+        .arg(
+            clap::Arg::with_name("indent")
+                .long("indent")
+                .help("Number of spaces to indent by")
+                .default_value("2")
+                .required(false)
+        )
+        .arg(
+            clap::Arg::with_name("tab")
+                .long("tab")
+                .help("Indent with tabs instead of spaces (--indent value is ignored)")
+                .required(false)
+                .takes_value(false)
+        )
+        .arg(
+            clap::Arg::with_name("color-output")
+                .long("color-output")
+                .short("C")
+                .help("Force colored output")
+                .required(false)
+                .takes_value(false)
+        )
+        .arg(
+            clap::Arg::with_name("monochrome-output")
+                .long("monochrome-output")
+                .short("M")
+                .help("Force monochrome output")
+                .required(false)
+                .takes_value(false)
         )
         .arg(
             clap::Arg::with_name("no-free")
@@ -45,10 +72,17 @@ fn main() -> Result<(),()> {
                 .help("DANGER")
                 .required(false)
                 .takes_value(false)
-                .display_order(10),
         )
         .get_matches();
 
+    // monochrome defined -> false
+    // else colored defined -> true
+    // else is terminal -> true
+    // else -> false
+
+    let indentation_step: u8 = matches.value_of("indent").unwrap().parse().unwrap();
+    let tab_indentation = matches.is_present("tab");
+    let colored = !matches.is_present("monochrome-output") && (matches.is_present("color-output")); // TODO: check if out is terminal
     let no_free = matches.is_present("no-free");
 
     let mut json_buffer = String::new();
@@ -120,9 +154,11 @@ fn main() -> Result<(),()> {
 
     let filtered = apply_filter(&filter_parsed, json_parsed);
 
+    let mut write_stdout = |s: &str| std::io::stdout().write(s.as_bytes()).map(|_| ()).map_err(|_| ());
+
     for val in filtered {
-        std::io::stdout().write(format!("{}", val).as_bytes()).map_err(|_| ())?;
-        std::io::stdout().write("\n".as_bytes()).map_err(|_| ())?;
+        write_json(val.as_ref(), 0, indentation_step, tab_indentation, colored, &mut write_stdout)?;
+        write_stdout("\n")?;
 
         if no_free {
             std::mem::forget(val);
