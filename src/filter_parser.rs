@@ -418,7 +418,7 @@ fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter
 
     if let Some(FilterLexeme::Identifier { s, quoted: true}) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
-        return Ok(Filter::Literal(Rc::new(JSONValue::String(*s))));
+        return Ok(Filter::Literal(Rc::new(JSONValue::String { s: *s, needs_escaping: false })));
     }
     
     return Err(ParseError {
