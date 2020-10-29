@@ -54,6 +54,7 @@ dependencies = [
 name = "jqr"
 version = "0.1.0"
 dependencies = [
+ "atty",
  "clap",
 ]
 

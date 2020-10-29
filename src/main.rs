@@ -82,7 +82,7 @@ fn main() -> Result<(),()> {
 
     let indentation_step: u8 = matches.value_of("indent").unwrap().parse().unwrap();
     let tab_indentation = matches.is_present("tab");
-    let colored = !matches.is_present("monochrome-output") && (matches.is_present("color-output")); // TODO: check if out is terminal
+    let colored = !matches.is_present("monochrome-output") && (matches.is_present("color-output") || atty::is(atty::Stream::Stdout));
     let no_free = matches.is_present("no-free");
 
     let mut json_buffer = String::new();
