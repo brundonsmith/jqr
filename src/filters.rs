@@ -56,7 +56,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::ObjectIdentifierIndex { identifier, optional } => 
             Box::new(values.map(move |val| -> JSONValue {
                 if let JSONValue::Object(contents) = val {
-                    contents.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone()
+                    contents.as_ref().0.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone()
                 } else if val == JSONValue::Null && *optional {
                     JSONValue::Null
                 } else {
@@ -112,7 +112,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::AllValues => 
             Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
                 let vals: Vec<JSONValue> = match val {
-                    JSONValue::Object(contents) => contents.values().cloned().collect(),
+                    JSONValue::Object(contents) => contents.as_ref().0.values().cloned().collect(),
                     JSONValue::Array(contents) => contents.iter().cloned().collect(),
                     _ => panic!(format!("Cannot get values of {}", val)),
                 };
@@ -179,7 +179,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                         }
                     },
                     JSONValue::Null => 0,
-                    JSONValue::Object(x) => x.keys().len(),
+                    JSONValue::Object(x) => x.as_ref().0.keys().len(),
                     _ => panic!(format!("Cannot get the length of {}", val)),
                 } as i32
             )
@@ -279,7 +279,7 @@ fn combinations<'a>(a: impl Iterator<Item=JSONValue<'a>>, b: impl Iterator<Item=
 fn keys<'a>(val: JSONValue<'a>) -> Vec<JSONValue<'a>> {
     match val {
         JSONValue::Object(map) => {
-            map.keys().cloned().collect()
+            map.as_ref().0.keys().cloned().collect()
         },
         JSONValue::Array(arr) => 
             (0..arr.len()).map(|i| JSONValue::Integer(i as i32)).collect(),

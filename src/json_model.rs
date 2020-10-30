@@ -1,8 +1,10 @@
 use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
+use crate::json_parser::object_entries;
+
 #[derive(Debug, Clone)]
 pub enum JSONValue<'a> {
-    Object(Rc<HashMap<JSONValue<'a>, JSONValue<'a>>>),
+    Object(Rc<(HashMap<JSONValue<'a>, JSONValue<'a>>, Option<&'a str>)>),
     Array(Rc<Vec<JSONValue<'a>>>),
     AllocatedString(Rc<String>),
     String { s: &'a str, needs_escaping: bool },
@@ -305,7 +307,13 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
             write_str("{")?;
             let mut first = true;
 
-            for (key, value) in contents.as_ref() {
+            let entries = contents.as_ref().1
+                .map(|json| object_entries(json).unwrap())
+                .unwrap_or(contents.as_ref().0.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect());
+
+            for (key, value) in entries.into_iter() {
                 if !first {
                     write_str(",")?;
                 } else {
@@ -329,7 +337,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
                         s,
                         needs_escaping: _,
                     } => write_str(s)?,
-                    JSONValue::AllocatedString(s) => write_str(&encode_escapes(s))?,
+                    JSONValue::AllocatedString(s) => write_str(&encode_escapes(s.as_str()))?,
                     _ => unimplemented!(),
                 };
                 write_str("\"")?;
@@ -340,7 +348,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
 
                 write_str(": ")?;
                 write_json(
-                    value,
+                    &value,
                     indentation + 1,
                     indentation_step,
                     tab_indentation,

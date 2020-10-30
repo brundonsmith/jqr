@@ -56,12 +56,14 @@ fn expression<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSO
 }
 
 fn object<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONValue<'a>, ParseError> {
+    let str_start = *index;
+
     try_eat(code, index, &'{')?;
 
     let mut contents = HashMap::new();
 
     if try_eat(code, index, &'}').is_ok() {
-        return Ok(JSONValue::Object(Rc::new(contents)));
+        return Ok(JSONValue::Object(Rc::new((contents, Some(&code[str_start..*index])))));
     } else {
         let key = expression(code, index, no_free);
 
@@ -99,7 +101,55 @@ fn object<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONVal
         }
         try_eat(code, index, &'}')?;
         
-        return Ok(JSONValue::Object(Rc::new(contents)));
+        return Ok(JSONValue::Object(Rc::new((contents, Some(&code[str_start..*index])))));
+    }
+}
+
+/// Parsing into a HashMap is more efficient for lookup, but when writing an 
+/// object back out as a string, we need to maintain the original property
+/// order, which is lost in a HashMap. So what we do is hang on to a reference
+/// to the original JSON code, and re-parse it as a sequence of key/value pairs
+/// when we need to reserialize to a string.
+pub fn object_entries<'a>(code: &'a str) -> Result<Vec<(JSONValue<'a>, JSONValue<'a>)>, ParseError> {
+    // TODO: Come up with a way to share most of this logic with json_parser::object()
+
+    let mut _index = 0;
+    let index = &mut _index;
+
+    try_eat(code, index, &'{')?;
+
+    let mut entries = Vec::new();
+
+    if try_eat(code, index, &'}').is_ok() {
+        return Ok(entries);
+    } else {
+        let key = expression(code, index, false);
+
+        if let Ok(prop) = key {
+            try_eat(code, index, &':')?;
+            let value = expression(code, index, false)?;
+
+            entries.push((prop, value));
+
+            while try_eat(code, index, &',').is_ok() {
+                let key = expression(code, index, false);
+
+                if let Ok(prop) = key {
+                    try_eat(code, index, &':')?;
+                    let value = expression(code, index, false)?;
+
+                    entries.push((prop, value));
+                } else {
+                    return Err(ParseError {
+                        msg: String::from("Expected object property after ','"),
+                        index: *index,
+                    });
+                }
+            }
+        }
+        try_eat(code, index, &'}')?;
+        
+        return Ok(entries);
     }
 }
 
@@ -244,18 +294,20 @@ mod parser_tests {
             JSONValue::String { s: "", needs_escaping: false },
         ])));
 
+        let json = "{ 
+            \"foo\": [ 
+                1, 
+                2.3, 
+                false, 
+                null, 
+                \"\" 
+            ] 
+        }";
+
         assert_eq!(
-            parse("{ 
-                \"foo\": [ 
-                    1, 
-                    2.3, 
-                    false, 
-                    null, 
-                    \"\" 
-                ] 
-            }", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            parse(json, false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
-                Ok(JSONValue::Object(Rc::new(target_hashmap)))
+                Ok(JSONValue::Object(Rc::new((target_hashmap, Some(json)))))
             ]
         )
     }
@@ -278,9 +330,9 @@ mod parser_tests {
                 { \"foo\": 3 }
             ", false).collect::<Vec<Result<JSONValue,ParseError>>>(),
             vec![
-                Ok(JSONValue::Object(Rc::new(map_1))),
-                Ok(JSONValue::Object(Rc::new(map_2))),
-                Ok(JSONValue::Object(Rc::new(map_3))),
+                Ok(JSONValue::Object(Rc::new((map_1, Some("{ \"foo\": 1 }"))))),
+                Ok(JSONValue::Object(Rc::new((map_2, Some("{ \"foo\": 2 }"))))),
+                Ok(JSONValue::Object(Rc::new((map_3, Some("{ \"foo\": 3 }"))))),
             ]
         )
     }
@@ -319,7 +371,7 @@ mod parser_tests {
         assert_eq!(
             parse("{}", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
-                Ok(JSONValue::Object(Rc::new(HashMap::new())))
+                Ok(JSONValue::Object(Rc::new((HashMap::new(), Some("{}")))))
             ]
         )
     }
@@ -357,29 +409,29 @@ mod parser_tests {
 }");
     }
 
-//     #[test]
-//     fn test_12() {
-//         assert_reversible("{
-//   \"id\": 809,
-//   \"name\": {
-//     \"english\": \"Melmetal\",
-//     \"japanese\": \"メルメタル\",
-//     \"chinese\": \"美录梅塔\",
-//     \"french\": \"\"
-//   },
-//   \"type\": [
-//     \"Steel\"
-//   ],
-//   \"base\": {
-//     \"HP\": 135,
-//     \"Attack\": 143,
-//     \"Defense\": 143,
-//     \"Sp. Attack\": 80,
-//     \"Sp. Defense\": 65,
-//     \"Speed\": 34
-//   }
-// }")
-    // }
+    #[test]
+    fn test_12() {
+        assert_reversible("{
+  \"id\": 809,
+  \"name\": {
+    \"english\": \"Melmetal\",
+    \"japanese\": \"メルメタル\",
+    \"chinese\": \"美录梅塔\",
+    \"french\": \"\"
+  },
+  \"type\": [
+    \"Steel\"
+  ],
+  \"base\": {
+    \"HP\": 135,
+    \"Attack\": 143,
+    \"Defense\": 143,
+    \"Sp. Attack\": 80,
+    \"Sp. Defense\": 65,
+    \"Speed\": 34
+  }
+}")
+    }
 
     fn assert_reversible(json: &str) {
         let parse_result = parse(json, false).next().unwrap().unwrap();
