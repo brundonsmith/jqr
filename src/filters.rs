@@ -183,13 +183,13 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 } as i32
             )
         })),
-        Filter::Keys => {
-            let mut unsorted_keys = values.map(keys).flatten().collect::<Vec<JSONValue<'a>>>();
+        Filter::Keys => Box::new(values.map(move |val| {
+            let mut unsorted_keys = keys(val);
 
             unsorted_keys.sort();
 
-            return Box::new(std::iter::once(JSONValue::Array(Rc::new(unsorted_keys))));
-        },
+            JSONValue::Array(Rc::new(unsorted_keys))
+        })),
         Filter::KeysUnsorted => Box::new(values.map(keys).flatten()),
         Filter::Map(pred) => Box::new(values.map(move |val| -> JSONValue {
             match val {
@@ -654,9 +654,27 @@ mod tests {
     fn test_15() {
         test_filter("3", ". + 5 * 2", "13")
     }
+
     #[test]
     fn test_16() {
         test_filter("5", "10 / . * 3", "6")
+    }
+
+    #[test]
+    fn test_17() {
+        test_filter(
+            "
+                { \"foo\": 1 }
+                { \"foo\": 2 }
+                { \"foo\": 3 }
+            ",
+            "keys",
+            "
+                [ \"foo\" ]
+                [ \"foo\" ]
+                [ \"foo\" ]
+            "
+        );
     }
 
 
