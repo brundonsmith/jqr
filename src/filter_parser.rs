@@ -205,21 +205,10 @@ fn operation_tier_1<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     let mut left = operation_tier_2(tokens, index)?;
 
     while match_one!(tokens, index, "and", "or") {
-        match tokens.get(*index).map(|t| &t.lexeme) {
-            Some(FilterLexeme::Special(s)) => match *s {
-                "and" => {
-                    *index += 1;
-                    let right = operation_tier_2(tokens, index)?;
-                    left = Filter::And { left: Box::new(left), right: Box::new(right) };
-                },
-                "or" => {
-                    *index += 1;
-                    let right = operation_tier_2(tokens, index)?;
-                    left = Filter::Or { left: Box::new(left), right: Box::new(right) };
-                },
-                _ => {}
-            },
-            _ => {}
+        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
+            *index += 1;
+            let right = operation_tier_2(tokens, index)?;
+            left = op_filter_from_special(special, left, right);
         }
     }
 
@@ -230,31 +219,10 @@ fn operation_tier_2<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     let mut left = operation_tier_3(tokens, index)?;
 
     while match_one!(tokens, index, "<", "<=", ">", ">=") {
-        match tokens.get(*index).map(|t| &t.lexeme) {
-            Some(FilterLexeme::Special(s)) => match *s {
-                "<" => {
-                    *index += 1;
-                    let right = operation_tier_3(tokens, index)?;
-                    left = Filter::LessThan { left: Box::new(left), right: Box::new(right) };
-                },
-                "<=" => {
-                    *index += 1;
-                    let right = operation_tier_3(tokens, index)?;
-                    left = Filter::LessThanOrEqual { left: Box::new(left), right: Box::new(right) };
-                },
-                ">" => {
-                    *index += 1;
-                    let right = operation_tier_3(tokens, index)?;
-                    left = Filter::GreaterThan { left: Box::new(left), right: Box::new(right) };
-                },
-                ">=" => {
-                    *index += 1;
-                    let right = operation_tier_3(tokens, index)?;
-                    left = Filter::GreaterThanOrEqual { left: Box::new(left), right: Box::new(right) };
-                },
-                _ => {}
-            },
-            _ => {}
+        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
+            *index += 1;
+            let right = operation_tier_3(tokens, index)?;
+            left = op_filter_from_special(special, left, right);
         }
     }
 
@@ -265,21 +233,10 @@ fn operation_tier_3<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     let mut left = operation_tier_4(tokens, index)?;
 
     while match_one!(tokens, index, "+", "-") {
-        match tokens.get(*index).map(|t| &t.lexeme) {
-            Some(FilterLexeme::Special(s)) => match *s {
-                "+" => {
-                    *index += 1;
-                    let right = operation_tier_4(tokens, index)?;
-                    left = Filter::Add { left: Box::new(left), right: Box::new(right) };
-                },
-                "-" => {
-                    *index += 1;
-                    let right = operation_tier_4(tokens, index)?;
-                    left = Filter::Subtract { left: Box::new(left), right: Box::new(right) };
-                },
-                _ => {}
-            },
-            _ => {}
+        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
+            *index += 1;
+            let right = operation_tier_4(tokens, index)?;
+            left = op_filter_from_special(special, left, right);
         }
     }
 
@@ -290,30 +247,31 @@ fn operation_tier_4<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     let mut left = function(tokens, index)?;
 
     while match_one!(tokens, index, "*", "/", "%") {
-        match tokens.get(*index).map(|t| &t.lexeme) {
-            Some(FilterLexeme::Special(s)) => match *s {
-                "*" => {
-                    *index += 1;
-                    let right = function(tokens, index)?;
-                    left = Filter::Multiply { left: Box::new(left), right: Box::new(right) };
-                },
-                "/" => {
-                    *index += 1;
-                    let right = function(tokens, index)?;
-                    left = Filter::Divide { left: Box::new(left), right: Box::new(right) };
-                },
-                "%" => {
-                    *index += 1;
-                    let right = function(tokens, index)?;
-                    left = Filter::Modulo { left: Box::new(left), right: Box::new(right) };
-                },
-                _ => {}
-            },
-            _ => {}
+        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
+            *index += 1;
+            let right = function(tokens, index)?;
+            left = op_filter_from_special(special, left, right);
         }
     }
 
     return Ok(left);
+}
+
+fn op_filter_from_special<'a>(special: &'a str, left: Filter<'a>, right: Filter<'a>) -> Filter<'a> {
+    match special {
+        "and" => Filter::And { left: Box::new(left), right: Box::new(right) },
+        "or" => Filter::Or { left: Box::new(left), right: Box::new(right) },
+        "<" => Filter::LessThan { left: Box::new(left), right: Box::new(right) },
+        "<=" => Filter::LessThanOrEqual { left: Box::new(left), right: Box::new(right) },
+        ">" => Filter::GreaterThan { left: Box::new(left), right: Box::new(right) },
+        ">=" => Filter::GreaterThanOrEqual { left: Box::new(left), right: Box::new(right) },
+        "+" => Filter::Add { left: Box::new(left), right: Box::new(right) },
+        "-" => Filter::Subtract { left: Box::new(left), right: Box::new(right) },
+        "*" => Filter::Multiply { left: Box::new(left), right: Box::new(right) },
+        "/" => Filter::Divide { left: Box::new(left), right: Box::new(right) },
+        "%" => Filter::Modulo { left: Box::new(left), right: Box::new(right) },
+        _ => unreachable!(),
+    }
 }
 
 fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
