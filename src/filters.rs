@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, rc::Rc};
 
-use crate::json_parser::{JSONValue, apply_escapes};
+use crate::json_model::{JSONValue, apply_escapes};
 
 #[derive(Debug,Clone,PartialEq)]
 pub enum Filter<'a> {
@@ -56,9 +56,8 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::ObjectIdentifierIndex { identifier, optional } => 
             Box::new(values.map(move |val| -> Rc<JSONValue> {
                 if let JSONValue::Object(contents) = val.as_ref() {
-                    let result = contents.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap();
-                    result.clone()
-                } else if *optional && val.as_ref() == &JSONValue::Null {
+                    contents.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone()
+                } else if val.as_ref() == &JSONValue::Null && *optional {
                     Rc::new(JSONValue::Null)
                 } else {
                     panic!(format!("Error: Object identifier index can only be used on values of type Object; got {}", val))
@@ -67,78 +66,58 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::ArrayIndex { index } => 
             Box::new(values.map(move |val| -> Rc<JSONValue> {
                 if let JSONValue::Array(contents) = val.as_ref() {
-                    return contents[*index].clone(); // TODO: Remove from Vec here as in Map above, to avoid clone()
+                    contents[*index].clone()
                 } else {
-                    panic!(format!("Error: Array index can only be used on values of type Array; got {}", val));
+                    panic!(format!("Error: Array index can only be used on values of type Array; got {}", val))
                 }
             })),
         Filter::Slice { start, end } => 
             Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=Rc<JSONValue>>> {
-                if let Some(s) = start {
-                    if let Some(e) = end {
-                        match val.as_ref() {
-                            JSONValue::Array(contents) => Box::new(std::iter::once(Rc::new(JSONValue::Array(contents.iter().skip(*s).take(*e - *s).cloned().collect())))),
-                            JSONValue::String { s: string, needs_escaping } => {
-                                if *needs_escaping {
-                                    let string = apply_escapes(string);
-                                    Box::new(std::iter::once(Rc::new(JSONValue::AllocatedString(string.chars().skip(*s).take(*e - *s).collect()))))
+                Box::new(std::iter::once(
+                    match val.as_ref() {
+                        JSONValue::Array(contents) => {
+                            if let Some(s) = start {
+                                if let Some(e) = end {
+                                    Rc::new(JSONValue::Array(contents.into_iter().skip(*s).take(*e - *s).cloned().collect()))
                                 } else {
-                                    Box::new(std::iter::once(Rc::new(JSONValue::AllocatedString(string.chars().skip(*s).take(*e - *s).collect()))))
+                                    Rc::new(JSONValue::Array(contents.into_iter().skip(*s).cloned().collect()))
                                 }
-                            },
-                            _ => panic!(format!("Cannot get values of {}", val)),
-                        }
-                    } else {
-                        match val.as_ref() {
-                            JSONValue::Array(contents) => Box::new(std::iter::once(Rc::new(JSONValue::Array(contents.into_iter().skip(*s).cloned().collect())))),
-                            JSONValue::String { s: string, needs_escaping } => {
-                                if *needs_escaping {
-                                    let string = apply_escapes(string);
-                                    Box::new(std::iter::once(Rc::new(JSONValue::AllocatedString(string.chars().skip(*s).collect()))))
+                            } else {
+                                if let Some(e) = end {
+                                    Rc::new(JSONValue::Array(contents.into_iter().take(*e).cloned().collect()))
                                 } else {
-                                    Box::new(std::iter::once(Rc::new(JSONValue::AllocatedString(string.chars().skip(*s).collect()))))
+                                    val.clone()
                                 }
-                            },
-                            _ => panic!(format!("Cannot get values of {}", val)),
-                        }
+                            }
+                        },
+                        JSONValue::String { s: string, needs_escaping } => {
+                            if *needs_escaping {
+                                let string = apply_escapes(string);
+
+                                Rc::new(JSONValue::AllocatedString(
+                                    slice(&string, start, end)
+                                        .expect(&format!("Cannot get values of {}", val))
+                                ))
+                            } else {
+                                Rc::new(JSONValue::AllocatedString(
+                                    slice(&string, start, end)
+                                        .expect(&format!("Cannot get values of {}", val))
+                                ))
+                            }
+                        },
+                        _ => panic!(format!("Cannot get values of {}", val)),
                     }
-                } else {
-                    if let Some(e) = end {
-                        match val.as_ref() {
-                            JSONValue::Array(contents) => Box::new(std::iter::once(Rc::new(JSONValue::Array(contents.into_iter().take(*e).cloned().collect())))),
-                            JSONValue::String { s: string, needs_escaping } => {
-                                if *needs_escaping {
-                                    let string = apply_escapes(string);
-                                    Box::new(std::iter::once(Rc::new(JSONValue::AllocatedString(string.chars().take(*e).collect()))))
-                                } else {
-                                    Box::new(std::iter::once(Rc::new(JSONValue::AllocatedString(string.chars().take(*e).collect()))))
-                                }
-                            },
-                            _ => panic!(format!("Cannot get values of {}", val)),
-                        }
-                    } else {
-                        match val.as_ref() {
-                            JSONValue::Array(contents) => Box::new(std::iter::once(val.clone())),
-                            _ => panic!(format!("Cannot get values of {}", val)),
-                        }
-                    }
-                }
+                ))
             }).flatten()),
         Filter::AllValues => 
             Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=Rc<JSONValue<'a>>>> {
-                match val.as_ref() {
-                    JSONValue::Object(contents) => {
-                        let vals: Vec<Rc<JSONValue>> = contents.values().cloned().collect();
-
-                        Box::new(vals.into_iter())
-                    },
-                    JSONValue::Array(contents) => {
-                        let vals: Vec<Rc<JSONValue>> = contents.iter().cloned().collect();
-
-                        Box::new(vals.into_iter())
-                    },
+                let vals: Vec<Rc<JSONValue>> = match val.as_ref() {
+                    JSONValue::Object(contents) => contents.values().cloned().collect(),
+                    JSONValue::Array(contents) => contents.iter().cloned().collect(),
                     _ => panic!(format!("Cannot get values of {}", val)),
-                }
+                };
+
+                Box::new(vals.into_iter())
             }).flatten()),
         Filter::Literal(v) => Box::new(std::iter::once(v.clone())),
 
@@ -189,21 +168,21 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         })),
 
         Filter::Length => Box::new(values.map(move |val| -> Rc<JSONValue<'a>> {
-            match val.as_ref() {
-                JSONValue::Array(x) => Rc::new(JSONValue::Integer(x.len() as i32)),
-                JSONValue::String { s, needs_escaping } => {
-                    let length = if *needs_escaping {
-                        apply_escapes(s).chars().count() // TODO: Optimize by making non-allocating escaped length function?
-                    } else {
-                        s.chars().count()
-                    };
-
-                    Rc::new(JSONValue::Integer(length as i32))
-                },
-                JSONValue::Null => Rc::new(JSONValue::Integer(0)),
-                JSONValue::Object(x) => Rc::new(JSONValue::Integer(x.keys().len() as i32)),
-                _ => panic!(format!("Cannot get the length of {}", val)),
-            }
+            Rc::new(JSONValue::Integer(
+                match val.as_ref() {
+                    JSONValue::Array(x) => x.len(),
+                    JSONValue::String { s, needs_escaping } => {
+                        if *needs_escaping {
+                            apply_escapes(s).chars().count() // TODO: Optimize by making non-allocating escaped length function?
+                        } else {
+                            s.chars().count()
+                        }
+                    },
+                    JSONValue::Null => 0,
+                    JSONValue::Object(x) => x.keys().len(),
+                    _ => panic!(format!("Cannot get the length of {}", val)),
+                } as i32
+            ))
         })),
         Filter::Keys => {
             let mut unsorted_keys = values.map(keys).flatten().collect::<Vec<Rc<JSONValue<'a>>>>();
@@ -220,7 +199,6 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                         arr.iter()
                             .map(|v| apply_filter(pred, std::iter::once(v.clone())))
                             .flatten()
-                            .map(|v| v.clone())
                             .collect())),
                 _ => panic!(format!("Cannot map over value {}", val))
             }
@@ -245,6 +223,22 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 
         //     Rc::new(next.clone())
         // })),
+    }
+}
+
+fn slice(string: &str, start: &Option<usize>, end: &Option<usize>) -> Result<String, ()> {
+    if let Some(s) = start {
+        if let Some(e) = end {
+            Ok(string.chars().skip(*s).take(*e - *s).collect())
+        } else {
+            Ok(string.chars().skip(*s).collect())
+        }
+    } else {
+        if let Some(e) = end {
+            Ok(string.chars().take(*e).collect())
+        } else {
+            Err(())
+        }
     }
 }
 
@@ -282,14 +276,13 @@ fn combinations<'a>(a: impl Iterator<Item=Rc<JSONValue<'a>>>, b: impl Iterator<I
     })
 }
 
-
 fn keys<'a>(val: Rc<JSONValue<'a>>) -> Vec<Rc<JSONValue<'a>>> {
     match val.as_ref() {
         JSONValue::Object(map) => {
             map.keys().cloned().collect()
         },
         JSONValue::Array(arr) => 
-            (0..arr.len()).map(|i| Rc::new(JSONValue::Integer(i as i32))).collect(),
+            (0..arr.len()).map(|i| JSONValue::Integer(i as i32)).map(Rc::new).collect(),
         _ => panic!(format!("Cannot get keys from value {}", val))
     }
 }
@@ -657,6 +650,11 @@ mod tests {
             "\"hello world\""
         );
     }
+
+    // #[test]
+    // fn test_15() {
+    //     test_filter("5", "10 / . * 3", "6")
+    // }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
         let input = json_parser::parse(input_json, false).map(|r| r.unwrap()).map(Rc::new);

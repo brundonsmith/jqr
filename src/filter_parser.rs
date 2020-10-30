@@ -1,12 +1,13 @@
 use std::{fmt::Display, rc::Rc};
 
 use crate::filters::Filter;
-use crate::json_parser::JSONValue;
+use crate::json_model::JSONValue;
 
 
 
 pub fn parse<'a>(code: &'a str) -> Result<Filter,ParseError> {
     let mut index = 0;
+    println!("{:?}", tokenize(code).collect::<Vec<Token>>());
     filter(&tokenize(code).collect(), &mut index).map(|f| optimize(&f))
 }
 
@@ -195,6 +196,8 @@ fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, P
 
 fn operation<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
     let left = function(tokens, index)?;
+
+    
 
     match tokens.get(*index).map(|t| &t.lexeme) {
         Some(FilterLexeme::Special(s)) => match *s {
@@ -481,10 +484,10 @@ fn optimize<'a>(filter: &Filter<'a>) -> Filter<'a> {
 
 #[cfg(test)]
 mod tests {
-        use std::rc::Rc;
-
-use crate::{filters::Filter, json_parser::JSONValue};
+    use std::rc::Rc;
+    use crate::filters::Filter;
     use crate::filter_parser::parse;
+    use crate::json_model::JSONValue;
 
     #[test]
     fn test_1() {

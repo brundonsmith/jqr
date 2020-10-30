@@ -3,13 +3,14 @@
 use std::{fs::File, io::BufReader, io::Read, io::Write, rc::Rc, time::Instant};
 
 use filters::apply_filter;//, apply_filter_hardcoded};
-use json_parser::{JSONValue, write_json};
+use json_model::{JSONValue, write_json};
 
 extern crate clap;
 
 mod json_parser;
 mod filter_parser;
 mod filters;
+mod json_model;
 
 fn main() -> Result<(),()> {
     let matches = clap::App::new("jqr")
@@ -151,6 +152,8 @@ fn main() -> Result<(),()> {
 
     let filter_str = matches.value_of("PATTERN").unwrap();
     let filter_parsed = filter_parser::parse(filter_str).unwrap();
+
+    println!("{:?}", filter_parsed);
 
     let filtered = apply_filter(&filter_parsed, json_parsed);
 
