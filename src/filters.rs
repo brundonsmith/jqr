@@ -11,7 +11,7 @@ pub enum Filter<'a> {
     ArrayIndex { index: usize },
     Slice { start: Option<usize>, end: Option<usize> },
     AllValues,
-    Literal(Rc<JSONValue<'a>>),
+    Literal(JSONValue<'a>),
 
     // combinators
     Comma(Vec<Filter<'a>>),
@@ -49,57 +49,57 @@ pub enum Filter<'a> {
 }
 
 
-pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=Rc<JSONValue<'a>>>) -> Box<dyn 'a + Iterator<Item=Rc<JSONValue<'a>>>> {
+pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=JSONValue<'a>>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
     // println!("\n{:?}", filter);
     match filter {
         Filter::Identity => Box::new(values),
         Filter::ObjectIdentifierIndex { identifier, optional } => 
-            Box::new(values.map(move |val| -> Rc<JSONValue> {
-                if let JSONValue::Object(contents) = val.as_ref() {
+            Box::new(values.map(move |val| -> JSONValue {
+                if let JSONValue::Object(contents) = val {
                     contents.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone()
-                } else if val.as_ref() == &JSONValue::Null && *optional {
-                    Rc::new(JSONValue::Null)
+                } else if val == JSONValue::Null && *optional {
+                    JSONValue::Null
                 } else {
                     panic!(format!("Error: Object identifier index can only be used on values of type Object; got {}", val))
                 }
             })),
         Filter::ArrayIndex { index } => 
-            Box::new(values.map(move |val| -> Rc<JSONValue> {
-                if let JSONValue::Array(contents) = val.as_ref() {
+            Box::new(values.map(move |val| -> JSONValue {
+                if let JSONValue::Array(contents) = val {
                     contents[*index].clone()
                 } else {
                     panic!(format!("Error: Array index can only be used on values of type Array; got {}", val))
                 }
             })),
         Filter::Slice { start, end } => 
-            Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=Rc<JSONValue>>> {
+            Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=JSONValue>> {
                 Box::new(std::iter::once(
-                    match val.as_ref() {
+                    match val {
                         JSONValue::Array(contents) => {
                             if let Some(s) = start {
                                 if let Some(e) = end {
-                                    Rc::new(JSONValue::Array(contents.into_iter().skip(*s).take(*e - *s).cloned().collect()))
+                                    JSONValue::Array(Rc::new(contents.iter().skip(*s).take(*e - *s).map(|v| v.clone()).collect()))
                                 } else {
-                                    Rc::new(JSONValue::Array(contents.into_iter().skip(*s).cloned().collect()))
+                                    JSONValue::Array(Rc::new(contents.iter().skip(*s).map(|v| v.clone()).collect()))
                                 }
                             } else {
                                 if let Some(e) = end {
-                                    Rc::new(JSONValue::Array(contents.into_iter().take(*e).cloned().collect()))
+                                    JSONValue::Array(Rc::new(contents.iter().take(*e).map(|v| v.clone()).collect()))
                                 } else {
-                                    val.clone()
+                                    JSONValue::Array(contents.clone())
                                 }
                             }
                         },
                         JSONValue::String { s: string, needs_escaping } => {
-                            if *needs_escaping {
+                            if needs_escaping {
                                 let string = apply_escapes(string);
 
-                                Rc::new(JSONValue::AllocatedString(
+                                JSONValue::AllocatedString(Rc::new(
                                     slice(&string, start, end)
                                         .expect(&format!("Cannot get values of {}", val))
                                 ))
                             } else {
-                                Rc::new(JSONValue::AllocatedString(
+                                JSONValue::AllocatedString(Rc::new(
                                     slice(&string, start, end)
                                         .expect(&format!("Cannot get values of {}", val))
                                 ))
@@ -110,8 +110,8 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 ))
             }).flatten()),
         Filter::AllValues => 
-            Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=Rc<JSONValue<'a>>>> {
-                let vals: Vec<Rc<JSONValue>> = match val.as_ref() {
+            Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
+                let vals: Vec<JSONValue> = match val {
                     JSONValue::Object(contents) => contents.values().cloned().collect(),
                     JSONValue::Array(contents) => contents.iter().cloned().collect(),
                     _ => panic!(format!("Cannot get values of {}", val)),
@@ -122,11 +122,11 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::Literal(v) => Box::new(std::iter::once(v.clone())),
 
         Filter::Comma(filters) => {
-            let vals = values.collect::<Vec<Rc<JSONValue<'a>>>>();
+            let vals = values.collect::<Vec<JSONValue<'a>>>();
 
             Box::new(filters.iter()
                 .map(move |f| {
-                    let vals: Vec<Rc<JSONValue>> = vals.iter().cloned().collect();
+                    let vals: Vec<JSONValue> = vals.iter().cloned().collect();
 
                     apply_filter(f, vals.into_iter())
                 })
@@ -134,7 +134,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         },
         Filter::Pipe(filters) => 
             Box::new(values.map(move |val| {
-                let mut result: Box<dyn 'a + Iterator<Item=Rc<JSONValue<'a>>>> = Box::new(std::iter::once(val));
+                let mut result: Box<dyn 'a + Iterator<Item=JSONValue<'a>>> = Box::new(std::iter::once(val));
 
                 for f in filters {
                     result = apply_filter(f, result);
@@ -159,20 +159,20 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 
         Filter::And { left, right } => applied_to_combinations(values, left, right, and),
         Filter::Or { left, right } => applied_to_combinations(values, left, right, or),
-        Filter::Not => Box::new(values.map(move |val| -> Rc<JSONValue<'a>> {
-            if let JSONValue::Bool(v) = val.as_ref() {
-                return Rc::new(JSONValue::Bool(!v));
+        Filter::Not => Box::new(values.map(move |val| -> JSONValue<'a> {
+            if let JSONValue::Bool(v) = val {
+                return JSONValue::Bool(!v);
             } else {
                 panic!(format!("Error: 'not' can only be used on values of type Boolean; got '{}'", val));
             }
         })),
 
-        Filter::Length => Box::new(values.map(move |val| -> Rc<JSONValue<'a>> {
-            Rc::new(JSONValue::Integer(
-                match val.as_ref() {
+        Filter::Length => Box::new(values.map(move |val| -> JSONValue<'a> {
+            JSONValue::Integer(
+                match val {
                     JSONValue::Array(x) => x.len(),
                     JSONValue::String { s, needs_escaping } => {
-                        if *needs_escaping {
+                        if needs_escaping {
                             apply_escapes(s).chars().count() // TODO: Optimize by making non-allocating escaped length function?
                         } else {
                             s.chars().count()
@@ -182,20 +182,20 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     JSONValue::Object(x) => x.keys().len(),
                     _ => panic!(format!("Cannot get the length of {}", val)),
                 } as i32
-            ))
+            )
         })),
         Filter::Keys => {
-            let mut unsorted_keys = values.map(keys).flatten().collect::<Vec<Rc<JSONValue<'a>>>>();
+            let mut unsorted_keys = values.map(keys).flatten().collect::<Vec<JSONValue<'a>>>();
 
             unsorted_keys.sort();
 
-            return Box::new(std::iter::once(Rc::new(JSONValue::Array(unsorted_keys))));
+            return Box::new(std::iter::once(JSONValue::Array(Rc::new(unsorted_keys))));
         },
         Filter::KeysUnsorted => Box::new(values.map(keys).flatten()),
-        Filter::Map(pred) => Box::new(values.map(move |val| -> Rc<JSONValue> {
-            match val.as_ref() {
+        Filter::Map(pred) => Box::new(values.map(move |val| -> JSONValue {
+            match val {
                 JSONValue::Array(arr) => 
-                    Rc::new(JSONValue::Array(
+                    JSONValue::Array(Rc::new(
                         arr.iter()
                             .map(|v| apply_filter(pred, std::iter::once(v.clone())))
                             .flatten()
@@ -205,10 +205,10 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         })),
         Filter::Select(pred) => Box::new(values.filter(move |val|
             apply_filter(pred, std::iter::once(val.clone()))
-                .all(|v| v.as_ref() == &JSONValue::Bool(true))
+                .all(|v| v == JSONValue::Bool(true))
         )),
 
-        // Filter::_PropertyChain(props) => Box::new(values.map(move |val| -> Rc<JSONValue> {
+        // Filter::_PropertyChain(props) => Box::new(values.map(move |val| -> JSONValue {
         //     let mut next = val.as_ref();
 
         //     for (identifier, optional) in props {
@@ -242,7 +242,7 @@ fn slice(string: &str, start: &Option<usize>, end: &Option<usize>) -> Result<Str
     }
 }
 
-fn applied_to_combinations<'a>(values: impl 'a + Iterator<Item=Rc<JSONValue<'a>>>, left: &'a Filter<'a>, right: &'a Filter<'a>, func: fn((Rc<JSONValue<'a>>, Rc<JSONValue<'a>>)) -> Rc<JSONValue<'a>>) -> Box<dyn 'a + Iterator<Item=Rc<JSONValue<'a>>>> {
+fn applied_to_combinations<'a>(values: impl 'a + Iterator<Item=JSONValue<'a>>, left: &'a Filter<'a>, right: &'a Filter<'a>, func: fn((JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
     Box::new(values.map(move |val| {
         let left_vals = apply_filter(left, std::iter::once(val.clone()));
         let right_vals = apply_filter(right, std::iter::once(val.clone()));
@@ -251,9 +251,9 @@ fn applied_to_combinations<'a>(values: impl 'a + Iterator<Item=Rc<JSONValue<'a>>
     }).flatten())
 }
 
-fn combinations<'a>(a: impl Iterator<Item=Rc<JSONValue<'a>>>, b: impl Iterator<Item=Rc<JSONValue<'a>>>) -> impl Iterator<Item=(Rc<JSONValue<'a>>, Rc<JSONValue<'a>>)> {
-    let vec_a = a.collect::<Vec<Rc<JSONValue>>>();
-    let vec_b = b.collect::<Vec<Rc<JSONValue>>>();
+fn combinations<'a>(a: impl Iterator<Item=JSONValue<'a>>, b: impl Iterator<Item=JSONValue<'a>>) -> impl Iterator<Item=(JSONValue<'a>, JSONValue<'a>)> {
+    let vec_a = a.collect::<Vec<JSONValue>>();
+    let vec_b = b.collect::<Vec<JSONValue>>();
 
     let mut index_a = 0;
     let mut index_b = 0;
@@ -276,13 +276,13 @@ fn combinations<'a>(a: impl Iterator<Item=Rc<JSONValue<'a>>>, b: impl Iterator<I
     })
 }
 
-fn keys<'a>(val: Rc<JSONValue<'a>>) -> Vec<Rc<JSONValue<'a>>> {
-    match val.as_ref() {
+fn keys<'a>(val: JSONValue<'a>) -> Vec<JSONValue<'a>> {
+    match val {
         JSONValue::Object(map) => {
             map.keys().cloned().collect()
         },
         JSONValue::Array(arr) => 
-            (0..arr.len()).map(|i| JSONValue::Integer(i as i32)).map(Rc::new).collect(),
+            (0..arr.len()).map(|i| JSONValue::Integer(i as i32)).collect(),
         _ => panic!(format!("Cannot get keys from value {}", val))
     }
 }
@@ -318,42 +318,42 @@ impl NumberPair {
 macro_rules! numeric_operation {
     ($a:ident, $b:ident, $op:tt) => {
         if let Some(pair) = NumberPair::from_values(&$a, &$b) {
-            return Rc::new(match pair {
+            return match pair {
                 NumberPair::Floats(a, b) => JSONValue::Float(a $op b),
                 NumberPair::Ints(a, b) => JSONValue::Integer(a $op b),
-            })
+            }
         }
     };
 }
 
-fn add<'a>(vals: (Rc<JSONValue<'a>>, Rc<JSONValue<'a>>)) -> Rc<JSONValue<'a>> {
+fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     numeric_operation!(a, b, +);
     
-    if a.as_ref() == &JSONValue::Null {
+    if a == JSONValue::Null {
         return b.clone();
     }
 
-    if b.as_ref() == &JSONValue::Null {
+    if b == JSONValue::Null {
         return a.clone();
     }
 
-    if let JSONValue::String { s: a, needs_escaping: _ } = a.as_ref() {
-        if let JSONValue::String { s: b, needs_escaping: _ } = b.as_ref() {
-            return Rc::new(JSONValue::AllocatedString(String::from(*a) + b.as_ref()));
+    if let JSONValue::String { s: a, needs_escaping: _ } = a {
+        if let JSONValue::String { s: b, needs_escaping: _ } = b {
+            return JSONValue::AllocatedString(Rc::new(String::from(a) + b));
         }
 
         panic!(format!("Cannot add values {} and {}", JSONValue::String { s: a.clone(), needs_escaping: false }, b));
     }
     
-    if let JSONValue::Array(a) = a.as_ref() {
-        if let JSONValue::Array(b) = b.as_ref() {
-            let mut result = a.clone();
-            for v in b {
+    if let JSONValue::Array(a) = a {
+        if let JSONValue::Array(b) = b {
+            let mut result = a.as_ref().clone();
+            for v in b.iter() {
                 result.push(v.clone());
             }
-            return Rc::new(JSONValue::Array(result));
+            return JSONValue::Array(Rc::new(result));
         }
 
         panic!(format!("Cannot add values {} and {}", JSONValue::Array(a.clone()), b));
@@ -372,22 +372,22 @@ fn add<'a>(vals: (Rc<JSONValue<'a>>, Rc<JSONValue<'a>>)) -> Rc<JSONValue<'a>> {
     panic!(format!("Cannot add values {} and {}", a, b));
 }
 
-fn subtract<'a>(vals: (Rc<JSONValue<'a>>, Rc<JSONValue<'a>>)) -> Rc<JSONValue<'a>> {
+fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     numeric_operation!(a, b, -);
 
-    if let JSONValue::String { s: a, needs_escaping: _ } = a.as_ref() {
-        if let JSONValue::String { s: b , needs_escaping: _ } = b.as_ref() {
+    if let JSONValue::String { s: a, needs_escaping: _ } = a {
+        if let JSONValue::String { s: b , needs_escaping: _ } = b {
             todo!()
         }
 
         panic!(format!("Cannot subtract values {} and {}", JSONValue::String { s: a.clone(), needs_escaping: false }, b));
-    } else if let JSONValue::Array(a) = a.as_ref() {
-        if let JSONValue::Array(b) = b.as_ref() {
-            return Rc::new(JSONValue::Array(
-                a.iter()
-                    .filter(|v| b.iter().any(|other| other == *v))
+    } else if let JSONValue::Array(a) = a {
+        if let JSONValue::Array(b) = b {
+            return JSONValue::Array(Rc::new(
+                a.as_ref().iter()
+                    .filter(|v| b.as_ref().iter().any(|other| other == *v))
                     .cloned()
                     .collect()
             ));
@@ -399,7 +399,7 @@ fn subtract<'a>(vals: (Rc<JSONValue<'a>>, Rc<JSONValue<'a>>)) -> Rc<JSONValue<'a
     panic!(format!("Cannot subtract values {} and {}", a, b));
 }
 
-fn multiply<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     numeric_operation!(a, b, *);
@@ -407,7 +407,7 @@ fn multiply<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
     panic!(format!("Cannot multiply values {} and {}", a, b));
 }
 
-fn divide<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     numeric_operation!(a, b, /);
@@ -415,7 +415,7 @@ fn divide<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
     panic!(format!("Cannot divide values {} and {}", a, b));
 }
 
-fn modulo<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn modulo<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     numeric_operation!(a, b, %);
@@ -423,64 +423,64 @@ fn modulo<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
     panic!(format!("Cannot get the modulus of values {} and {}", a, b));
 }
 
-fn equal<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    Rc::new(JSONValue::Bool(a == b))
+    JSONValue::Bool(a == b)
 }
 
-fn not_equal<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn not_equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    Rc::new(JSONValue::Bool(a != b))
+    JSONValue::Bool(a != b)
 }
 
-fn less_than<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn less_than<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     let ord = a.cmp(&b);
-    Rc::new(JSONValue::Bool(ord == Ordering::Less))
+    JSONValue::Bool(ord == Ordering::Less)
 }
 
-fn less_than_or_equal<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn less_than_or_equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     let ord = a.cmp(&b);
-    Rc::new(JSONValue::Bool(ord == Ordering::Less || ord == Ordering::Equal))
+    JSONValue::Bool(ord == Ordering::Less || ord == Ordering::Equal)
 }
 
-fn greater_than<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn greater_than<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     let ord = a.cmp(&b);
-    Rc::new(JSONValue::Bool(ord == Ordering::Greater))
+    JSONValue::Bool(ord == Ordering::Greater)
 }
 
-fn greater_than_or_equal<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn greater_than_or_equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     let ord = a.cmp(&b);
-    Rc::new(JSONValue::Bool(ord == Ordering::Greater || ord == Ordering::Equal))
+    JSONValue::Bool(ord == Ordering::Greater || ord == Ordering::Equal)
 }
 
-fn and<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn and<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    if let JSONValue::Bool(a) = a.as_ref() {
-        if let JSONValue::Bool(b) = b.as_ref() {
-            return Rc::new(JSONValue::Bool(*a && *b));
+    if let JSONValue::Bool(a) = a {
+        if let JSONValue::Bool(b) = b {
+            return JSONValue::Bool(a && b);
         }
     }
 
     panic!(format!("Cannot apply 'and' to values {} and {}", a, b));
 }
 
-fn or<'a>(vals: (Rc<JSONValue>, Rc<JSONValue>)) -> Rc<JSONValue<'a>> {
+fn or<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    if let JSONValue::Bool(a) = a.as_ref() {
-        if let JSONValue::Bool(b) = b.as_ref() {
-            return Rc::new(JSONValue::Bool(*a || *b));
+    if let JSONValue::Bool(a) = a {
+        if let JSONValue::Bool(b) = b {
+            return JSONValue::Bool(a || b);
         }
     }
 
@@ -657,9 +657,9 @@ mod tests {
     // }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
-        let input = json_parser::parse(input_json, false).map(|r| r.unwrap()).map(Rc::new);
+        let input = json_parser::parse(input_json, false).map(|r| r.unwrap());
         let filter = filter_parser::parse(filter).unwrap();
-        let expected = json_parser::parse(output_json, false).map(|r| r.unwrap()).map(Rc::new);
+        let expected = json_parser::parse(output_json, false).map(|r| r.unwrap());
 
         apply_filter(&filter, input).zip(expected).for_each(|(r, e)| {
             assert_eq!(r, e)

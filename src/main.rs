@@ -114,14 +114,6 @@ fn main() -> Result<(),()> {
             Ok(val) => val,
             Err(e) => panic!(format!("Error parsing JSON at"))// {}:{}\t{:?}", e.line(), e.column(), e.classify()))
         }
-    }).map(|v| {
-        let rc = Rc::new(v);
-
-        if no_free {
-            std::mem::forget(rc.clone());
-        }
-
-        return rc;
     });
 
     if no_free {
@@ -131,7 +123,9 @@ fn main() -> Result<(),()> {
 
 
     // let mark = Instant::now();
-    // let json_parsed: Vec<Rc<JSONValue>> = json_parsed.collect();
+    // let json_parsed: Vec<JSONValue> = json_parsed.collect();
+
+    // println!("JSON size: {}", std::mem::size_of_val(&json_parsed[0]));
 
     // println!("JSON parse took: {}ms", mark.elapsed().as_millis());
 
@@ -153,14 +147,12 @@ fn main() -> Result<(),()> {
     let filter_str = matches.value_of("PATTERN").unwrap();
     let filter_parsed = filter_parser::parse(filter_str).unwrap();
 
-    println!("{:?}", filter_parsed);
-
     let filtered = apply_filter(&filter_parsed, json_parsed);
 
     let mut write_stdout = |s: &str| std::io::stdout().write(s.as_bytes()).map(|_| ()).map_err(|_| ());
 
     for val in filtered {
-        write_json(val.as_ref(), 0, indentation_step, tab_indentation, colored, &mut write_stdout)?;
+        write_json(&val, 0, indentation_step, tab_indentation, colored, &mut write_stdout)?;
         write_stdout("\n")?;
 
         if no_free {
@@ -170,3 +162,5 @@ fn main() -> Result<(),()> {
 
     Ok(())
 }
+
+

@@ -416,12 +416,12 @@ fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter
 
     if let Some(FilterLexeme::Number(n)) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
-        return Ok(Filter::Literal(Rc::new(JSONValue::Integer(*n as i32))));
+        return Ok(Filter::Literal(JSONValue::Integer(*n as i32)));
     }
 
     if let Some(FilterLexeme::Identifier { s, quoted: true}) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
-        return Ok(Filter::Literal(Rc::new(JSONValue::String { s: *s, needs_escaping: false })));
+        return Ok(Filter::Literal(JSONValue::String { s: *s, needs_escaping: false }));
     }
     
     return Err(ParseError {
@@ -577,7 +577,7 @@ mod tests {
                 Filter::Map(
                     Box::new(Filter::Add { 
                         left: Box::new(Filter::ObjectIdentifierIndex { identifier: "price", optional: false }),
-                        right: Box::new(Filter::Literal(Rc::new(JSONValue::Integer(10))))
+                        right: Box::new(Filter::Literal(JSONValue::Integer(10)))
                     })
                 )
             ]))

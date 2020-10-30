@@ -1,12 +1,11 @@
-use std::{fmt::Display, collections::HashMap, hash::Hash, rc::Rc};
+use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
-
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum JSONValue<'a> {
-    Object(HashMap<Rc<JSONValue<'a>>, Rc<JSONValue<'a>>>),
-    Array(Vec<Rc<JSONValue<'a>>>),
+    Object(Rc<HashMap<JSONValue<'a>, JSONValue<'a>>>),
+    Array(Rc<Vec<JSONValue<'a>>>),
+    AllocatedString(Rc<String>),
     String { s: &'a str, needs_escaping: bool },
-    AllocatedString(String),
     Integer(i32),
     Float(f32),
     Bool(bool),
@@ -18,8 +17,11 @@ impl<'a> JSONValue<'a> {
         match self {
             JSONValue::Object(_) => "object",
             JSONValue::Array(_) => "array",
-            JSONValue::String { s: _, needs_escaping: _ } => "string",
             JSONValue::AllocatedString(_) => "string",
+            JSONValue::String {
+                s: _,
+                needs_escaping: _,
+            } => "string",
             JSONValue::Integer(_) => "number",
             JSONValue::Float(_) => "float",
             JSONValue::Bool(_) => "bool",
@@ -33,8 +35,11 @@ impl<'a> Hash for JSONValue<'a> {
         match self {
             // JSONValue::Object(x) => x.hash(state),
             JSONValue::Array(x) => x.hash(state),
-            JSONValue::String { s: x, needs_escaping: _ } => x.hash(state),
             JSONValue::AllocatedString(x) => x.hash(state),
+            JSONValue::String {
+                s: x,
+                needs_escaping: _,
+            } => x.hash(state),
             JSONValue::Integer(x) => x.hash(state),
             // JSONValue::Float(x) => x.hash(state),
             JSONValue::Bool(x) => x.hash(state),
@@ -47,20 +52,57 @@ impl<'a> Hash for JSONValue<'a> {
 impl<'a> PartialEq for JSONValue<'a> {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            JSONValue::Object(x1) => match other { JSONValue::Object(x2) => x1.eq(&x2), _ => false },
-            JSONValue::Array(x1) => match other { JSONValue::Array(x2) => x1.iter().enumerate().all(|(index, el)| Some(el).eq(&x2.get(index))), _ => false },
-            JSONValue::String { s: x1, needs_escaping: y1 } => match other { JSONValue::String { s: x2, needs_escaping: y2 } => x1.eq(x2) && y1 == y2, JSONValue::AllocatedString(x2) => x1.eq(&x2), _ => false },
-            JSONValue::AllocatedString(x1) => match other { JSONValue::String { s: x2, needs_escaping: _ } => x1.eq(x2), JSONValue::AllocatedString(x2) => x1.eq(x2), _ => false },
-            JSONValue::Integer(x1) => match *other { JSONValue::Integer(x2) => x1.eq(&x2), _ => false },
-            JSONValue::Float(x1) => match *other { JSONValue::Float(x2) => x1.eq(&x2), _ => false },
-            JSONValue::Bool(x1) => match *other { JSONValue::Bool(x2) => x1.eq(&x2), _ => false },
-            JSONValue::Null => match *other { JSONValue::Null => true, _ => false },
+            JSONValue::Object(x1) => match other {
+                JSONValue::Object(x2) => x1.eq(&x2),
+                _ => false,
+            },
+            JSONValue::Array(x1) => match other {
+                JSONValue::Array(x2) => x1
+                    .iter()
+                    .enumerate()
+                    .all(|(index, el)| Some(el).eq(&x2.get(index))),
+                _ => false,
+            },
+            JSONValue::AllocatedString(x1) => match other {
+                JSONValue::String {
+                    s: x2,
+                    needs_escaping: _,
+                } => x1.as_ref().eq(x2),
+                JSONValue::AllocatedString(x2) => x1.eq(x2),
+                _ => false,
+            },
+            JSONValue::String {
+                s: x1,
+                needs_escaping: y1,
+            } => match other {
+                JSONValue::String {
+                    s: x2,
+                    needs_escaping: y2,
+                } => x1.eq(x2) && y1 == y2,
+                JSONValue::AllocatedString(x2) => x1.eq(x2.as_ref()),
+                _ => false,
+            },
+            JSONValue::Integer(x1) => match *other {
+                JSONValue::Integer(x2) => x1.eq(&x2),
+                _ => false,
+            },
+            JSONValue::Float(x1) => match *other {
+                JSONValue::Float(x2) => x1.eq(&x2),
+                _ => false,
+            },
+            JSONValue::Bool(x1) => match *other {
+                JSONValue::Bool(x2) => x1.eq(&x2),
+                _ => false,
+            },
+            JSONValue::Null => match *other {
+                JSONValue::Null => true,
+                _ => false,
+            },
         }
     }
 }
 
-impl<'a> Eq for JSONValue<'a> { }
-
+impl<'a> Eq for JSONValue<'a> {}
 
 pub fn apply_escapes<'a>(raw: &'a str) -> String {
     let mut new_str = String::with_capacity(raw.len());
@@ -79,7 +121,9 @@ pub fn apply_escapes<'a>(raw: &'a str) -> String {
             }
         } else {
             if c == 'u' {
-                let decoded = std::char::from_u32(u32::from_str_radix(&raw[i + 1..i + 5], 16).unwrap()).unwrap();
+                let decoded =
+                    std::char::from_u32(u32::from_str_radix(&raw[i + 1..i + 5], 16).unwrap())
+                        .unwrap();
                 new_str_ref.push(decoded);
                 escape_to = i + 5;
             } else {
@@ -141,8 +185,8 @@ fn format_radix(mut x: u32, radix: u32) -> String {
     result.into_iter().rev().collect()
 }
 
-const ESCAPE_DIRECTIVES: [char;7] = [ '\\', '"', 't', 'r', 'n', 'f', 'b' ];
-const ESCAPE_CHAR_VALUES: [char;7] = [ '\\', '"', '\t', '\r', '\n', '\u{000c}', '\u{0008}' ];
+const ESCAPE_DIRECTIVES: [char; 7] = ['\\', '"', 't', 'r', 'n', 'f', 'b'];
+const ESCAPE_CHAR_VALUES: [char; 7] = ['\\', '"', '\t', '\r', '\n', '\u{000c}', '\u{0008}'];
 
 impl<'a> PartialOrd for JSONValue<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -152,16 +196,27 @@ impl<'a> PartialOrd for JSONValue<'a> {
             return cmp_key_self.partial_cmp(&cmp_key_other);
         }
 
-
-        if let JSONValue::String { s, needs_escaping: _ } = self {
-            if let JSONValue::String { s: other, needs_escaping: _ } = other {
+        if let JSONValue::String {
+            s,
+            needs_escaping: _,
+        } = self
+        {
+            if let JSONValue::String {
+                s: other,
+                needs_escaping: _,
+            } = other
+            {
                 return s.partial_cmp(other);
             }
             if let JSONValue::AllocatedString(other) = other {
                 return s.partial_cmp(&other.as_str());
             }
         } else if let JSONValue::AllocatedString(s) = self {
-            if let JSONValue::String { s: other, needs_escaping: _ } = other {
+            if let JSONValue::String {
+                s: other,
+                needs_escaping: _,
+            } = other
+            {
                 return s.as_str().partial_cmp(other);
             }
             if let JSONValue::AllocatedString(other) = other {
@@ -177,7 +232,7 @@ impl<'a> PartialOrd for JSONValue<'a> {
                 return (*s as f32).partial_cmp(other);
             }
         }
-        
+
         if let JSONValue::Float(s) = self {
             if let JSONValue::Integer(other) = other {
                 return s.partial_cmp(&(*other as f32));
@@ -213,7 +268,10 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
     match val {
         JSONValue::Object(_) => 6,
         JSONValue::Array(_) => 5,
-        JSONValue::String { s: _, needs_escaping: _ } => 4,
+        JSONValue::String {
+            s: _,
+            needs_escaping: _,
+        } => 4,
         JSONValue::AllocatedString(_) => 4,
         JSONValue::Integer(_) => 3,
         JSONValue::Float(_) => 3,
@@ -222,7 +280,6 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
         JSONValue::Null => 0,
     }
 }
-
 
 impl<'a> Display for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -235,28 +292,43 @@ const BLUE: &str = "\u{1b}[34m";
 const GREEN: &str = "\u{1b}[32m";
 const BLACK: &str = "\u{1b}[30m";
 
-pub fn write_json<'a, E, W: FnMut(&str) -> Result<(),E>>(val: &JSONValue<'a>, indentation: i32, indentation_step: u8, tab_indentation: bool, colored: bool, write_str: &mut W) -> Result<(),E> {
+pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
+    val: &JSONValue<'a>,
+    indentation: i32,
+    indentation_step: u8,
+    tab_indentation: bool,
+    colored: bool,
+    write_str: &mut W,
+) -> Result<(), E> {
     match val {
         JSONValue::Object(contents) => {
             write_str("{")?;
             let mut first = true;
 
-            for (key, value) in contents {
+            for (key, value) in contents.as_ref() {
                 if !first {
                     write_str(",")?;
                 } else {
                     first = false;
                 }
-                
-                write_newline_and_indentation(write_str, indentation + 1, indentation_step, tab_indentation)?;
+
+                write_newline_and_indentation(
+                    write_str,
+                    indentation + 1,
+                    indentation_step,
+                    tab_indentation,
+                )?;
 
                 if colored {
                     write_str(BLUE)?;
                 }
 
                 write_str("\"")?;
-                match key.as_ref() {
-                    JSONValue::String { s, needs_escaping: _ } => write_str(s)?,
+                match key {
+                    JSONValue::String {
+                        s,
+                        needs_escaping: _,
+                    } => write_str(s)?,
                     JSONValue::AllocatedString(s) => write_str(&encode_escapes(s))?,
                     _ => unimplemented!(),
                 };
@@ -267,35 +339,67 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(),E>>(val: &JSONValue<'a>, in
                 }
 
                 write_str(": ")?;
-                write_json(value, indentation + 1, indentation_step, tab_indentation, colored, write_str)?;
+                write_json(
+                    value,
+                    indentation + 1,
+                    indentation_step,
+                    tab_indentation,
+                    colored,
+                    write_str,
+                )?;
             }
-            
-            write_newline_and_indentation(write_str, indentation, indentation_step, tab_indentation)?;
+
+            write_newline_and_indentation(
+                write_str,
+                indentation,
+                indentation_step,
+                tab_indentation,
+            )?;
             write_str("}")
-        },
+        }
         JSONValue::Array(contents) => {
             write_str("[")?;
             let mut first = true;
 
-            for value in contents {
+            for value in contents.as_ref() {
                 if !first {
                     write_str(",")?;
                 } else {
                     first = false;
                 }
 
-                write_newline_and_indentation(write_str, indentation + 1, indentation_step, tab_indentation)?;
-                write_json(value, indentation + 1, indentation_step, tab_indentation, colored, write_str)?;
+                write_newline_and_indentation(
+                    write_str,
+                    indentation + 1,
+                    indentation_step,
+                    tab_indentation,
+                )?;
+                write_json(
+                    value,
+                    indentation + 1,
+                    indentation_step,
+                    tab_indentation,
+                    colored,
+                    write_str,
+                )?;
             }
 
-            write_newline_and_indentation(write_str, indentation, indentation_step, tab_indentation)?;
+            write_newline_and_indentation(
+                write_str,
+                indentation,
+                indentation_step,
+                tab_indentation,
+            )?;
             write_str("]")
-        },
-        JSONValue::String { s, needs_escaping: _ } => {
+        }
+        JSONValue::String {
+            s,
+            needs_escaping: _,
+        } => {
             if colored {
                 write_str(GREEN)?;
             }
-            
+
             write_str(&format!("\"{}\"", s))?;
 
             if colored {
@@ -303,7 +407,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(),E>>(val: &JSONValue<'a>, in
             }
 
             Ok(())
-        },
+        }
         JSONValue::AllocatedString(s) => {
             if colored {
                 write_str(GREEN)?;
@@ -316,7 +420,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(),E>>(val: &JSONValue<'a>, in
             }
 
             Ok(())
-        },
+        }
         JSONValue::Integer(n) => write_str(&format!("{}", n)),
         JSONValue::Float(n) => write_str(&format!("{}", n)),
         JSONValue::Bool(b) => write_str(&format!("{}", b)),
@@ -324,7 +428,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(),E>>(val: &JSONValue<'a>, in
             if colored {
                 write_str(BLACK)?;
             }
-            
+
             write_str("null")?;
 
             if colored {
@@ -332,12 +436,16 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(),E>>(val: &JSONValue<'a>, in
             }
 
             Ok(())
-        },
+        }
     }
 }
 
-fn write_newline_and_indentation<E, W: FnMut(&str) -> Result<(),E>>(write_str: &mut W, indentation: i32, indentation_step: u8, tab_indentation: bool) -> Result<(), E> {
-
+fn write_newline_and_indentation<E, W: FnMut(&str) -> Result<(), E>>(
+    write_str: &mut W,
+    indentation: i32,
+    indentation_step: u8,
+    tab_indentation: bool,
+) -> Result<(), E> {
     write_str("\n")?;
 
     if tab_indentation {
@@ -355,29 +463,40 @@ fn write_newline_and_indentation<E, W: FnMut(&str) -> Result<(),E>>(write_str: &
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::{JSONValue, apply_escapes, encode_escapes};
+    use super::{apply_escapes, encode_escapes, JSONValue};
+    use std::rc::Rc;
 
+    #[test]
+    fn test_1() {
+        assert_eq!(
+            JSONValue::String {
+                s: "foo",
+                needs_escaping: false
+            },
+            JSONValue::AllocatedString(Rc::new(String::from("foo")))
+        );
+    }
 
-  #[test]
-  fn test_1() {
-      assert_eq!(JSONValue::String { s: "foo", needs_escaping: false }, JSONValue::AllocatedString(String::from("foo")));
-  }
+    #[test]
+    fn test_2() {
+        assert_eq!(
+            apply_escapes("\\n \\t \\f \\u1234"),
+            "\n \t \u{000c} \u{1234}"
+        )
+    }
 
-  #[test]
-  fn test_2() {
-      assert_eq!(apply_escapes("\\n \\t \\f \\u1234"), "\n \t \u{000c} \u{1234}")
-  }
+    #[test]
+    fn test_3() {
+        assert_eq!(apply_escapes("\\u1234\\n\\t\\\\").chars().count(), 4)
+    }
 
-  #[test]
-  fn test_3() {
-      assert_eq!(apply_escapes("\\u1234\\n\\t\\\\").chars().count(), 4)
-  }
-
-  #[test]
-  fn test_4() {
-      assert_eq!(encode_escapes("\n \t \u{000c} \u{1234}"), "\\n \\t \\f \\u1234")
-  }
+    #[test]
+    fn test_4() {
+        assert_eq!(
+            encode_escapes("\n \t \u{000c} \u{1234}"),
+            "\\n \\t \\f \\u1234"
+        )
+    }
 }

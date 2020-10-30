@@ -61,16 +61,13 @@ fn object<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONVal
     let mut contents = HashMap::new();
 
     if try_eat(code, index, &'}').is_ok() {
-        return Ok(JSONValue::Object(contents));
+        return Ok(JSONValue::Object(Rc::new(contents)));
     } else {
         let key = expression(code, index, no_free);
 
         if let Ok(prop) = key {
             try_eat(code, index, &':')?;
             let value = expression(code, index, no_free)?;
-
-            let prop = Rc::new(prop);
-            let value = Rc::new(value);
 
             if no_free {
                 std::mem::forget(prop.clone());
@@ -85,9 +82,6 @@ fn object<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONVal
                 if let Ok(prop) = key {
                     try_eat(code, index, &':')?;
                     let value = expression(code, index, no_free)?;
-
-                    let prop = Rc::new(prop);        
-                    let value = Rc::new(value);
 
                     if no_free {
                         std::mem::forget(prop.clone());
@@ -105,7 +99,7 @@ fn object<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONVal
         }
         try_eat(code, index, &'}')?;
         
-        return Ok(JSONValue::Object(contents));
+        return Ok(JSONValue::Object(Rc::new(contents)));
     }
 }
 
@@ -115,11 +109,9 @@ fn array<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONValu
     let mut contents = Vec::new();
 
     if try_eat(code, index, &']').is_ok() {
-        return Ok(JSONValue::Array(contents));
+        return Ok(JSONValue::Array(Rc::new(contents)));
     } else {
         if let Ok(value) = expression(code, index, no_free) {
-
-            let value = Rc::new(value);
 
             if no_free {
                 std::mem::forget(value.clone());
@@ -129,7 +121,7 @@ fn array<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONValu
 
             while try_eat(code, index, &',').is_ok() {
 
-                let value = Rc::new(expression(code, index, no_free)?);
+                let value = expression(code, index, no_free)?;
 
                 if no_free {
                     std::mem::forget(value.clone());
@@ -140,7 +132,7 @@ fn array<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONValu
         }
         try_eat(code, index, &']')?;
 
-        return Ok(JSONValue::Array(contents));
+        return Ok(JSONValue::Array(Rc::new(contents)));
     }
 }
 
@@ -237,19 +229,19 @@ mod parser_tests {
     fn test_1() {
         assert_eq!(
             parse("[1, 2, 3]", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
-            vec![ Ok(JSONValue::Array(vec![ Rc::new(JSONValue::Integer(1)), Rc::new(JSONValue::Integer(2)), Rc::new(JSONValue::Integer(3)) ])) ]
+            vec![ Ok(JSONValue::Array(Rc::new(vec![ JSONValue::Integer(1), JSONValue::Integer(2), JSONValue::Integer(3) ]))) ]
         )
     }
 
     #[test]
     fn test_2() {
         let mut target_hashmap = HashMap::new();
-        target_hashmap.insert(Rc::new(JSONValue::String { s: "foo", needs_escaping: false }), Rc::new(JSONValue::Array(vec![
-            Rc::new(JSONValue::Integer(1)),
-            Rc::new(JSONValue::Float(2.3)),
-            Rc::new(JSONValue::Bool(false)),
-            Rc::new(JSONValue::Null),
-            Rc::new(JSONValue::String { s: "", needs_escaping: false }),
+        target_hashmap.insert(JSONValue::String { s: "foo", needs_escaping: false }, JSONValue::Array(Rc::new(vec![
+            JSONValue::Integer(1),
+            JSONValue::Float(2.3),
+            JSONValue::Bool(false),
+            JSONValue::Null,
+            JSONValue::String { s: "", needs_escaping: false },
         ])));
 
         assert_eq!(
@@ -263,7 +255,7 @@ mod parser_tests {
                 ] 
             }", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
-                Ok(JSONValue::Object(target_hashmap))
+                Ok(JSONValue::Object(Rc::new(target_hashmap)))
             ]
         )
     }
@@ -271,13 +263,13 @@ mod parser_tests {
     #[test]
     fn test_3() {
         let mut map_1 = HashMap::new();
-        map_1.insert(Rc::new(JSONValue::String { s: "foo", needs_escaping: false }), Rc::new(JSONValue::Integer(1)));
+        map_1.insert(JSONValue::String { s: "foo", needs_escaping: false }, JSONValue::Integer(1));
         
         let mut map_2 = HashMap::new();
-        map_2.insert(Rc::new(JSONValue::String { s: "foo", needs_escaping: false }), Rc::new(JSONValue::Integer(2)));
+        map_2.insert(JSONValue::String { s: "foo", needs_escaping: false }, JSONValue::Integer(2));
         
         let mut map_3 = HashMap::new();
-        map_3.insert(Rc::new(JSONValue::String { s: "foo", needs_escaping: false }), Rc::new(JSONValue::Integer(3)));
+        map_3.insert(JSONValue::String { s: "foo", needs_escaping: false }, JSONValue::Integer(3));
 
         assert_eq!(
             parse("
@@ -286,9 +278,9 @@ mod parser_tests {
                 { \"foo\": 3 }
             ", false).collect::<Vec<Result<JSONValue,ParseError>>>(),
             vec![
-                Ok(JSONValue::Object(map_1)),
-                Ok(JSONValue::Object(map_2)),
-                Ok(JSONValue::Object(map_3)),
+                Ok(JSONValue::Object(Rc::new(map_1))),
+                Ok(JSONValue::Object(Rc::new(map_2))),
+                Ok(JSONValue::Object(Rc::new(map_3))),
             ]
         )
     }
@@ -327,7 +319,7 @@ mod parser_tests {
         assert_eq!(
             parse("{}", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
-                Ok(JSONValue::Object(HashMap::new()))
+                Ok(JSONValue::Object(Rc::new(HashMap::new())))
             ]
         )
     }
@@ -337,7 +329,7 @@ mod parser_tests {
         assert_eq!(
             parse("[]", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
-                Ok(JSONValue::Array(vec![]))
+                Ok(JSONValue::Array(Rc::new(vec![])))
             ]
         )
     }
