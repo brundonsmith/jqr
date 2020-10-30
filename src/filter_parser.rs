@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc};
+use std::fmt::Display;
 
 use crate::filters::Filter;
 use crate::json_model::JSONValue;
@@ -7,7 +7,6 @@ use crate::json_model::JSONValue;
 
 pub fn parse<'a>(code: &'a str) -> Result<Filter,ParseError> {
     let mut index = 0;
-    println!("{:?}", tokenize(code).collect::<Vec<Token>>());
     filter(&tokenize(code).collect(), &mut index).map(|f| optimize(&f))
 }
 
@@ -175,15 +174,15 @@ fn pipe<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, Pa
 }
 
 fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-    let first = operation(tokens, index)?;
+    let first = operation_tier_1(tokens, index)?;
 
     if try_eat(tokens, index, ",").is_ok() {
-        let second = operation(tokens, index)?;
+        let second = operation_tier_1(tokens, index)?;
 
         let mut sequence = vec![ first, second ];
 
         while try_eat(tokens, index, ",").is_ok() {
-            let next = operation(tokens, index)?;
+            let next = operation_tier_1(tokens, index)?;
 
             sequence.push(next);
         }
@@ -194,71 +193,124 @@ fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, P
     return Ok(first);
 }
 
-fn operation<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-    let left = function(tokens, index)?;
 
-    
+macro_rules! match_one {
+    ($alltokens:ident, $index:ident, $first_token:literal, $($tokens:literal),*) => {
+        $alltokens.get(*$index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special($first_token))
+        $(|| $alltokens.get(*$index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special($tokens)))*
+    };
+}
 
-    match tokens.get(*index).map(|t| &t.lexeme) {
-        Some(FilterLexeme::Special(s)) => match *s {
-            "+" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::Add { left: Box::new(left), right: Box::new(right) });
-            },
-            "-" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::Subtract { left: Box::new(left), right: Box::new(right) });
-            },
-            "*" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::Multiply { left: Box::new(left), right: Box::new(right) });
-            },
-            "/" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::Divide { left: Box::new(left), right: Box::new(right) });
-            },
-            "%" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::Modulo { left: Box::new(left), right: Box::new(right) });
-            },
-            "<" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::LessThan { left: Box::new(left), right: Box::new(right) });
-            },
-            "<=" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::LessThanOrEqual { left: Box::new(left), right: Box::new(right) });
-            },
-            ">" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::GreaterThan { left: Box::new(left), right: Box::new(right) });
-            },
-            ">=" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::GreaterThanOrEqual { left: Box::new(left), right: Box::new(right) });
-            },
-            "and" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::And { left: Box::new(left), right: Box::new(right) });
-            },
-            "or" => {
-                *index += 1;
-                let right = function(tokens, index)?;
-                return Ok(Filter::Or { left: Box::new(left), right: Box::new(right) });
+fn operation_tier_1<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+    let mut left = operation_tier_2(tokens, index)?;
+
+    while match_one!(tokens, index, "and", "or") {
+        match tokens.get(*index).map(|t| &t.lexeme) {
+            Some(FilterLexeme::Special(s)) => match *s {
+                "and" => {
+                    *index += 1;
+                    let right = operation_tier_2(tokens, index)?;
+                    left = Filter::And { left: Box::new(left), right: Box::new(right) };
+                },
+                "or" => {
+                    *index += 1;
+                    let right = operation_tier_2(tokens, index)?;
+                    left = Filter::Or { left: Box::new(left), right: Box::new(right) };
+                },
+                _ => {}
             },
             _ => {}
-        },
-        _ => {}
+        }
+    }
+
+    return Ok(left);
+}
+
+fn operation_tier_2<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+    let mut left = operation_tier_3(tokens, index)?;
+
+    while match_one!(tokens, index, "<", "<=", ">", ">=") {
+        match tokens.get(*index).map(|t| &t.lexeme) {
+            Some(FilterLexeme::Special(s)) => match *s {
+                "<" => {
+                    *index += 1;
+                    let right = operation_tier_3(tokens, index)?;
+                    left = Filter::LessThan { left: Box::new(left), right: Box::new(right) };
+                },
+                "<=" => {
+                    *index += 1;
+                    let right = operation_tier_3(tokens, index)?;
+                    left = Filter::LessThanOrEqual { left: Box::new(left), right: Box::new(right) };
+                },
+                ">" => {
+                    *index += 1;
+                    let right = operation_tier_3(tokens, index)?;
+                    left = Filter::GreaterThan { left: Box::new(left), right: Box::new(right) };
+                },
+                ">=" => {
+                    *index += 1;
+                    let right = operation_tier_3(tokens, index)?;
+                    left = Filter::GreaterThanOrEqual { left: Box::new(left), right: Box::new(right) };
+                },
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    return Ok(left);
+}
+
+fn operation_tier_3<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+    let mut left = operation_tier_4(tokens, index)?;
+
+    while match_one!(tokens, index, "+", "-") {
+        match tokens.get(*index).map(|t| &t.lexeme) {
+            Some(FilterLexeme::Special(s)) => match *s {
+                "+" => {
+                    *index += 1;
+                    let right = operation_tier_4(tokens, index)?;
+                    left = Filter::Add { left: Box::new(left), right: Box::new(right) };
+                },
+                "-" => {
+                    *index += 1;
+                    let right = operation_tier_4(tokens, index)?;
+                    left = Filter::Subtract { left: Box::new(left), right: Box::new(right) };
+                },
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    return Ok(left);
+}
+
+fn operation_tier_4<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+    let mut left = function(tokens, index)?;
+
+    while match_one!(tokens, index, "*", "/", "%") {
+        match tokens.get(*index).map(|t| &t.lexeme) {
+            Some(FilterLexeme::Special(s)) => match *s {
+                "*" => {
+                    *index += 1;
+                    let right = function(tokens, index)?;
+                    left = Filter::Multiply { left: Box::new(left), right: Box::new(right) };
+                },
+                "/" => {
+                    *index += 1;
+                    let right = function(tokens, index)?;
+                    left = Filter::Divide { left: Box::new(left), right: Box::new(right) };
+                },
+                "%" => {
+                    *index += 1;
+                    let right = function(tokens, index)?;
+                    left = Filter::Modulo { left: Box::new(left), right: Box::new(right) };
+                },
+                _ => {}
+            },
+            _ => {}
+        }
     }
 
     return Ok(left);

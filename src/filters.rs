@@ -50,7 +50,6 @@ pub enum Filter<'a> {
 
 
 pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=JSONValue<'a>>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
-    // println!("\n{:?}", filter);
     match filter {
         Filter::Identity => Box::new(values),
         Filter::ObjectIdentifierIndex { identifier, optional } => 
@@ -651,16 +650,20 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn test_15() {
-    //     test_filter("5", "10 / . * 3", "6")
-    // }
+    #[test]
+    fn test_15() {
+        test_filter("3", ". + 5 * 2", "13")
+    }
+    #[test]
+    fn test_16() {
+        test_filter("5", "10 / . * 3", "6")
+    }
+
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
         let input = json_parser::parse(input_json, false).map(|r| r.unwrap());
         let filter = filter_parser::parse(filter).unwrap();
         let expected = json_parser::parse(output_json, false).map(|r| r.unwrap());
-
         apply_filter(&filter, input).zip(expected).for_each(|(r, e)| {
             assert_eq!(r, e)
         });
