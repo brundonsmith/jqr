@@ -408,7 +408,9 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
                 write_str(GREEN)?;
             }
 
-            write_str(&format!("\"{}\"", s))?;
+            write_str("\"")?;
+            write_str(s)?;
+            write_str("\"")?;
 
             if colored {
                 write_str(WHITE)?;
@@ -421,7 +423,9 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
                 write_str(GREEN)?;
             }
 
-            write_str(&format!("\"{}\"", encode_escapes(s)))?;
+            write_str("\"")?;
+            write_str(&encode_escapes(s))?;
+            write_str("\"")?;
 
             if colored {
                 write_str(WHITE)?;
@@ -429,9 +433,12 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
 
             Ok(())
         }
-        JSONValue::Integer(n) => write_str(&format!("{}", n)),
-        JSONValue::Float(n) => write_str(&format!("{}", n)),
-        JSONValue::Bool(b) => write_str(&format!("{}", b)),
+        JSONValue::Integer(n) => write_str(&n.to_string()),
+        JSONValue::Float(n) => write_str(&n.to_string()),
+        JSONValue::Bool(b) => write_str(match b {
+            true => "true",
+            false => "false",
+        }),
         JSONValue::Null => {
             if colored {
                 write_str(BLACK)?;
