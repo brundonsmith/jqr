@@ -14,7 +14,7 @@ use filters::apply_filter;//, apply_filter_hardcoded};
 use json_model::{JSONValue, create_indentation_string, write_json};
 
 
-fn main() -> Result<(),()> {
+fn main() -> Result<(),String> {
 
     let matches = clap::App::new("jqr")
         .version("0.1")
@@ -24,13 +24,15 @@ fn main() -> Result<(),()> {
             clap::Arg::with_name("PATTERN")
                 .help("The query pattern")
                 .required(true)
-                // .default_value("map(select(.base.Attack > 100)) | map(.name.english)")
+                // .default_value(".")
         )
         .arg(
             clap::Arg::with_name("JSON")
                 .help("File name or inlined JSON string")
                 .required(false)
-                // .default_value("/Users/brundolf/Downloads/query-json-master/benchmarks/big.json")
+//                 .default_value("[
+//   {
+//     \"id\": 1,")
         )
         .arg(
             clap::Arg::with_name("kind")
@@ -78,36 +80,34 @@ fn main() -> Result<(),()> {
                 .takes_value(false)
         )
         .get_matches();
-
-    // monochrome defined -> false
-    // else colored defined -> true
-    // else is terminal -> true
-    // else -> false
-
+    
+    let kind = matches.value_of("kind").unwrap();
+    let json = matches.value_of("JSON");
+    let pattern = matches.value_of("PATTERN").unwrap();
     let indentation_step: u8 = matches.value_of("indent").unwrap().parse().unwrap();
     let tab_indentation = matches.is_present("tab");
     let colored = !matches.is_present("monochrome-output") && (matches.is_present("color-output") || atty::is(atty::Stream::Stdout));
     let no_free = matches.is_present("no-free");
 
     let mut json_buffer = String::new();
-    let json_str = if matches.is_present("JSON") {
-        match matches.value_of("kind").unwrap() {
+    let json_str = if let Some(json) = json {
+        match kind {
             "file" => {
                 let mark = Instant::now();
-                let mut file = File::open(matches.value_of("JSON").unwrap()).map_err(|_| ())?;
-                file.read_to_string(&mut json_buffer).map_err(|_| ())?;
+                let mut file = File::open(json).map_err(|e| e.to_string())?;
+                file.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
                 println!("File read took: {}ms", mark.elapsed().as_millis());
     
                 json_buffer.as_str()
             },
-            "inline" => matches.value_of("JSON").unwrap(),
+            "inline" => json,
             _ => unreachable!()
         }
     } else {
         let stdin = std::io::stdin();
         let mut handle = stdin.lock();
 
-        handle.read_to_string(&mut json_buffer).map_err(|_| ())?;
+        handle.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
         
         json_buffer.as_str()
     };
@@ -115,7 +115,21 @@ fn main() -> Result<(),()> {
     let json_parsed = json_parser::parse(json_str, no_free).map(|r| {
         match r {
             Ok(val) => val,
-            Err(e) => panic!(format!("Error parsing JSON at"))// {}:{}\t{:?}", e.line(), e.column(), e.classify()))
+            Err(e) => {
+                let mut line = 1;
+                let mut column = 1;
+
+                for c in json_str.char_indices().take_while(|(i, _)| *i < e.index - 1).map(|(_, c)| c) {
+                    if c == '\n' {
+                        line += 1;
+                        column = 1;
+                    } else {
+                        column += 1;
+                    }
+                }
+
+                panic!("Error parsing JSON at {}:{} - {}", line, column, e.msg);
+            }
         }
     });
 
@@ -123,8 +137,7 @@ fn main() -> Result<(),()> {
         std::mem::forget(json_str);
     }
 
-    let filter_str = matches.value_of("PATTERN").unwrap();
-    let filter_parsed = filter_parser::parse(filter_str).unwrap();
+    let filter_parsed = filter_parser::parse(pattern).unwrap();
 
 
 
@@ -155,7 +168,7 @@ fn main() -> Result<(),()> {
         }
     }
 
-    std::io::stdout().write_all(out.as_bytes()).map_err(|_| ())?;
+    std::io::stdout().write_all(out.as_bytes()).map_err(|e| e.to_string())?;
     // println!("Writing out took: {}ms", mark.elapsed().as_millis());
 
     Ok(())

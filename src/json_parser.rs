@@ -161,25 +161,25 @@ fn array<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONValu
     if try_eat(code, index, &']').is_ok() {
         return Ok(JSONValue::Array(Rc::new(contents)));
     } else {
-        if let Ok(value) = expression(code, index, no_free) {
+        let value = expression(code, index, no_free)?;
+
+        if no_free {
+            std::mem::forget(value.clone());
+        }
+
+        contents.push(value);
+
+        while try_eat(code, index, &',').is_ok() {
+
+            let value = expression(code, index, no_free)?;
 
             if no_free {
                 std::mem::forget(value.clone());
             }
 
             contents.push(value);
-
-            while try_eat(code, index, &',').is_ok() {
-
-                let value = expression(code, index, no_free)?;
-
-                if no_free {
-                    std::mem::forget(value.clone());
-                }
-
-                contents.push(value);
-            }
         }
+
         try_eat(code, index, &']')?;
 
         return Ok(JSONValue::Array(Rc::new(contents)));
