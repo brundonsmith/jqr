@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
+use std::{collections::HashMap, fmt::Display, hash::Hash, collections::HashSet, rc::Rc};
 
 use crate::json_parser::object_entries;
 
@@ -55,17 +55,14 @@ impl<'a> PartialEq for JSONValue<'a> {
     fn eq(&self, other: &Self) -> bool {
         match self {
             JSONValue::Object(x1) => match other {
-                JSONValue::Object(x2) => x1.eq(&x2),
+                JSONValue::Object(x2) => x1.as_ref().0.eq(&x2.as_ref().0),
                 _ => false,
             },
             JSONValue::Array(x1) => match other {
-                JSONValue::Array(x2) => x1
-                    .iter()
-                    .enumerate()
-                    .all(|(index, el)| Some(el).eq(&x2.get(index))),
+                JSONValue::Array(x2) => x1.as_ref().eq(x2.as_ref()),
                 _ => false,
             },
-            JSONValue::AllocatedString(x1) => match other {
+            JSONValue::AllocatedString( x1) => match other {
                 JSONValue::String {
                     s: x2,
                     needs_escaping: _,
