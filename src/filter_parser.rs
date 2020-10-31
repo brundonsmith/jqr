@@ -20,12 +20,12 @@ pub struct ParseError<'a> {
 impl<'a> Display for ParseError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let location = match &self.token {
-            Some(t) => format!("{}:{}", t.line_number, t.column),
+            Some(t) => format!("{}:{}", t.line_number, t.column + 1),
             None => String::from("<EOF>"),
         };
 
         f.write_str(&format!(
-            "ERROR {}, {}", 
+            "Error parsing JSON at {} - {}", 
             location, 
             self.msg
         ))
@@ -49,7 +49,7 @@ pub enum FilterLexeme<'a> {
 
 fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
     let mut skip_to: Option<usize> = None;
-    let mut line_number = 0;
+    let mut line_number = 1;
     let mut line_start = 0;
 
     code.char_indices().filter_map(move |(index, ch)| {

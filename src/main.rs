@@ -137,7 +137,7 @@ fn main() -> Result<(),String> {
         std::mem::forget(json_str);
     }
 
-    let filter_parsed = filter_parser::parse(pattern).unwrap();
+    let filter_parsed = filter_parser::parse(pattern).map_err(|e| e.to_string())?;
 
 
 
