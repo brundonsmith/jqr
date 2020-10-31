@@ -375,18 +375,12 @@ fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
     numeric_operation!(a, b, -);
-
-    if let JSONValue::String { s: a, needs_escaping: _ } = a {
-        if let JSONValue::String { s: b , needs_escaping: _ } = b {
-            todo!()
-        }
-
-        panic!(format!("Cannot subtract values {} and {}", JSONValue::String { s: a.clone(), needs_escaping: false }, b));
-    } else if let JSONValue::Array(a) = a {
+    
+    if let JSONValue::Array(a) = a {
         if let JSONValue::Array(b) = b {
             return JSONValue::Array(Rc::new(
                 a.as_ref().iter()
-                    .filter(|v| b.as_ref().iter().any(|other| other == *v))
+                    .filter(|v| !b.as_ref().iter().any(|other| other == *v))
                     .cloned()
                     .collect()
             ));
@@ -691,9 +685,15 @@ mod tests {
             }")
     }
 
+    #[test]
+    fn test_19() {
+        test_filter("[ 5, 6, 7, 8 ]", ". - .[2:]", "[ 5, 6 ]")
+    }
+
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
         let input = json_parser::parse(input_json, false).map(|r| r.unwrap());
         let filter = filter_parser::parse(filter).unwrap();
+        println!("{:?}", filter);
         let expected = json_parser::parse(output_json, false).map(|r| r.unwrap());
         apply_filter(&filter, input).zip(expected).for_each(|(r, e)| {
             assert_eq!(r, e)
