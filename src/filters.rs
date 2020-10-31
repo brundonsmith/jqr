@@ -376,7 +376,7 @@ fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 
     numeric_operation!(a, b, -);
     
-    if let JSONValue::Array(a) = a {
+    if let JSONValue::Array(a) = &a {
         if let JSONValue::Array(b) = b {
             return JSONValue::Array(Rc::new(
                 a.as_ref().iter()
@@ -385,8 +385,6 @@ fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
                     .collect()
             ));
         }
-
-        panic!(format!("Cannot subtract values {} and {}", JSONValue::Array(a.clone()), b));
     }
 
     panic!(format!("Cannot subtract values {} and {}", a, b));
@@ -397,7 +395,33 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 
     numeric_operation!(a, b, *);
 
+    if let JSONValue::String { s: a, needs_escaping: _ } = &a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::AllocatedString(Rc::new(repeated_str(a, b)));
+        }
+    } else if let JSONValue::AllocatedString(a) = &a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::AllocatedString(Rc::new(repeated_str(a, b)));
+        }
+    } else if let JSONValue::Integer(a) = &a {
+        if let JSONValue::String { s: b, needs_escaping: _ } = b {
+            return JSONValue::AllocatedString(Rc::new(repeated_str(b, *a)));
+        } else if let JSONValue::AllocatedString(b) = b {
+            return JSONValue::AllocatedString(Rc::new(repeated_str(&b, *a)));
+        }
+    }
+
     panic!(format!("Cannot multiply values {} and {}", a, b));
+}
+
+fn repeated_str(s: &str, n: i32) -> String {
+    let mut res = String::with_capacity(s.len() * n as usize);
+
+    for _ in 0..n {
+        res.push_str(s);
+    }
+
+    return res;
 }
 
 fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
@@ -688,6 +712,11 @@ mod tests {
     #[test]
     fn test_19() {
         test_filter("[ 5, 6, 7, 8 ]", ". - .[2:]", "[ 5, 6 ]")
+    }
+
+    #[test]
+    fn test_20() {
+        test_filter("\"foo\"", "3 * .", "\"foofoofoo\"")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
