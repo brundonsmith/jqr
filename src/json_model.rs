@@ -285,7 +285,9 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
 
 impl<'a> Display for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write_json(self, 0, "  ", false, &mut |s| f.write_str(s))
+        let mut buffer = String::new();
+        write_json(self, 0, "  ", false, &mut buffer);
+        f.write_str(&buffer)
     }
 }
 
@@ -294,16 +296,16 @@ const BLUE: &str = "\u{1b}[34m";
 const GREEN: &str = "\u{1b}[32m";
 const BLACK: &str = "\u{1b}[30m";
 
-pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
+pub fn write_json<'a>(
     val: &JSONValue<'a>,
     indentation: i32,
     indentation_string: &str,
     colored: bool,
-    write_str: &mut W,
-) -> Result<(), E> {
+    buffer: &mut String,
+) {
     match val {
         JSONValue::Object(contents) => {
-            write_str("{")?;
+            buffer.push('{');
             let mut first = true;
 
             let entries = contents.as_ref().1
@@ -314,152 +316,144 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
 
             for (key, value) in entries.into_iter() {
                 if !first {
-                    write_str(",")?;
+                    buffer.push(',');
                 } else {
                     first = false;
                 }
 
                 write_newline_and_indentation(
-                    write_str,
+                    buffer,
                     indentation + 1,
                     indentation_string,
-                )?;
+                );
 
                 if colored {
-                    write_str(BLUE)?;
+                    buffer.push_str(BLUE);
                 }
 
-                write_str("\"")?;
+                buffer.push('\"');
                 match key {
                     JSONValue::String {
                         s,
                         needs_escaping: _,
-                    } => write_str(s)?,
-                    JSONValue::AllocatedString(s) => write_str(&encode_escapes(s.as_str()))?,
+                    } => buffer.push_str(s),
+                    JSONValue::AllocatedString(s) => buffer.push_str(&encode_escapes(s.as_str())),
                     _ => unimplemented!(),
                 };
-                write_str("\"")?;
+                buffer.push('\"');
 
                 if colored {
-                    write_str(WHITE)?;
+                    buffer.push_str(WHITE);
                 }
 
-                write_str(": ")?;
+                buffer.push_str(": ");
                 write_json(
                     &value,
                     indentation + 1,
                     indentation_string,
                     colored,
-                    write_str,
-                )?;
+                    buffer,
+                );
             }
 
             write_newline_and_indentation(
-                write_str,
+                buffer,
                 indentation,
                 indentation_string,
-            )?;
-            write_str("}")
+            );
+            buffer.push('}')
         }
         JSONValue::Array(contents) => {
-            write_str("[")?;
+            buffer.push('[');
             let mut first = true;
 
             for value in contents.as_ref() {
                 if !first {
-                    write_str(",")?;
+                    buffer.push(',');
                 } else {
                     first = false;
                 }
 
                 write_newline_and_indentation(
-                    write_str,
+                    buffer,
                     indentation + 1,
                     indentation_string,
-                )?;
+                );
                 write_json(
                     value,
                     indentation + 1,
                     indentation_string,
                     colored,
-                    write_str,
-                )?;
+                    buffer,
+                );
             }
 
             write_newline_and_indentation(
-                write_str,
+                buffer,
                 indentation,
                 indentation_string,
-            )?;
-            write_str("]")
+            );
+            buffer.push(']');
         }
         JSONValue::String {
             s,
             needs_escaping: _,
         } => {
             if colored {
-                write_str(GREEN)?;
+                buffer.push_str(GREEN);
             }
 
-            write_str("\"")?;
-            write_str(s)?;
-            write_str("\"")?;
+            buffer.push('\"');
+            buffer.push_str(s);
+            buffer.push('\"');
 
             if colored {
-                write_str(WHITE)?;
+                buffer.push_str(WHITE);
             }
-
-            Ok(())
         }
         JSONValue::AllocatedString(s) => {
             if colored {
-                write_str(GREEN)?;
+                buffer.push_str(GREEN);
             }
 
-            write_str("\"")?;
-            write_str(&encode_escapes(s))?;
-            write_str("\"")?;
+            buffer.push('\"');
+            buffer.push_str(&encode_escapes(s));
+            buffer.push('\"');
 
             if colored {
-                write_str(WHITE)?;
+                buffer.push_str(WHITE);
             }
-
-            Ok(())
         }
-        JSONValue::Integer(n) => write_str(&n.to_string()),
-        JSONValue::Float(n) => write_str(&n.to_string()),
-        JSONValue::Bool(b) => write_str(match b {
+        JSONValue::Integer(n) => buffer.push_str(&n.to_string()),
+        JSONValue::Float(n) => buffer.push_str(&n.to_string()),
+        JSONValue::Bool(b) => buffer.push_str(match b {
             true => "true",
             false => "false",
         }),
         JSONValue::Null => {
             if colored {
-                write_str(BLACK)?;
+                buffer.push_str(BLACK);
             }
 
-            write_str("null")?;
+            buffer.push_str("null");
 
             if colored {
-                write_str(WHITE)?;
+                buffer.push_str(WHITE);
             }
-
-            Ok(())
         }
     }
 }
 
-fn write_newline_and_indentation<E, W: FnMut(&str) -> Result<(), E>>(
-    write_str: &mut W,
+fn write_newline_and_indentation(
+    buffer: &mut String,
     indentation: i32,
     indentation_string: &str,
-) -> Result<(), E> {
-    write_str("\n")?;
+) {
+    buffer.push('\n');
 
     for _ in 0..indentation {
-        write_str(indentation_string)?;
+        buffer.push_str(indentation_string);
     }
-
-    Ok(())
 }
 
 pub fn create_indentation_string(

@@ -128,6 +128,7 @@ fn main() -> Result<(),()> {
 
 
 
+
     // let mark = Instant::now();
     // let json_parsed: Vec<JSONValue> = json_parsed.collect();
     // println!("JSON parse took: {}ms", mark.elapsed().as_millis());
@@ -136,27 +137,25 @@ fn main() -> Result<(),()> {
     // let filtered: Vec<JSONValue> = apply_filter(&filter_parsed, json_parsed.into_iter()).collect();
     // println!("Filtering took: {}ms", mark.elapsed().as_millis());
 
-    // let mut out = std::io::sink();
-
 
 
     let filtered = apply_filter(&filter_parsed, json_parsed);
 
-    let mut out = std::io::stdout();
 
-
-    let mut write_stdout = move |s: &str| out.write_all(s.as_bytes()).map(|_| ()).map_err(|_| ());
 
     // let mark = Instant::now();
     let indentation_string = create_indentation_string(indentation_step, tab_indentation);
+    let mut out = String::new();
     for val in filtered {
-        write_json(&val, 0, &indentation_string, colored, &mut write_stdout)?;
-        write_stdout("\n")?;
+        write_json(&val, 0, &indentation_string, colored, &mut out);
+        out.push('\n');
 
         if no_free {
             std::mem::forget(val);
         }
     }
+
+    std::io::stdout().write_all(out.as_bytes()).map_err(|_| ())?;
     // println!("Writing out took: {}ms", mark.elapsed().as_millis());
 
     Ok(())

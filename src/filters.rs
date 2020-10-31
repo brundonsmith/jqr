@@ -184,11 +184,11 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
             )
         })),
         Filter::Keys => Box::new(values.map(move |val| {
-            let mut unsorted_keys = keys(val);
+            let mut keys = keys(val);
 
-            unsorted_keys.sort();
+            keys.sort();
 
-            JSONValue::Array(Rc::new(unsorted_keys))
+            JSONValue::Array(Rc::new(keys))
         })),
         Filter::KeysUnsorted => Box::new(values.map(keys).flatten()),
         Filter::Map(pred) => Box::new(values.map(move |val| -> JSONValue {
