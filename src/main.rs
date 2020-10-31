@@ -73,7 +73,7 @@ fn main() -> Result<(),()> {
         .arg(
             clap::Arg::with_name("no-free")
                 .long("no-free")
-                .help("DANGER")
+                .help("Direct the program to skip de-allocation of memory where possible, intentionally leaking objects (until the process ends) but saving time on system calls. In testing this tends to yield a 5%-10% performance improvement, at the expense of strictly-increasing memory usage.")
                 .required(false)
                 .takes_value(false)
         )
