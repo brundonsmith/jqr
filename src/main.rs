@@ -1,18 +1,21 @@
 #![allow(dead_code)]
 
-use std::{fs::File, io::BufReader, io::Read, io::Write, rc::Rc, time::Instant};
-
-use filters::apply_filter;//, apply_filter_hardcoded};
-use json_model::{JSONValue, write_json};
-
 extern crate clap;
+extern crate atty;
 
 mod json_parser;
 mod filter_parser;
 mod filters;
 mod json_model;
 
+use std::{fs::File, io::BufReader, io::Read, io::Write, rc::Rc, time::Instant};
+
+use filters::apply_filter;//, apply_filter_hardcoded};
+use json_model::{JSONValue, write_json};
+
+
 fn main() -> Result<(),()> {
+
     let matches = clap::App::new("jqr")
         .version("0.1")
         .author("Brandon Smith <mail@brandonsmith.ninja>")
@@ -125,22 +128,21 @@ fn main() -> Result<(),()> {
     // let mark = Instant::now();
     // let json_parsed: Vec<JSONValue> = json_parsed.collect();
 
-    // println!("JSON size: {}", std::mem::size_of_val(&json_parsed[0]));
-
     // println!("JSON parse took: {}ms", mark.elapsed().as_millis());
 
     // let filter_str = matches.value_of("PATTERN").unwrap();
     // let filter_parsed = filter_parser::parse(filter_str).unwrap();
 
     // let mark = Instant::now();
-    // apply_filter(&filter_parsed, json_parsed.into_iter()).for_each(|v| {
-    //     if no_free {
-    //         std::mem::forget(v);
-    //     } else {
-    //         std::mem::drop(v);
-    //     }
-    // });
+    // let filtered: Vec<JSONValue> = apply_filter(&filter_parsed, json_parsed.into_iter()).collect();
     // println!("Filtering took: {}ms", mark.elapsed().as_millis());
+
+    // let mut out_string = String::with_capacity(89000000);
+    // let mut write_stdout = |s: &str| {
+    //     out_string.push_str(s);
+
+    //     Ok(())
+    // };
 
 
 
@@ -149,8 +151,12 @@ fn main() -> Result<(),()> {
 
     let filtered = apply_filter(&filter_parsed, json_parsed);
 
-    let mut write_stdout = |s: &str| std::io::stdout().write(s.as_bytes()).map(|_| ()).map_err(|_| ());
+    let mut stdout = std::io::stdout();
+    let mut write_stdout = move |s: &str| stdout.write_all(s.as_bytes()).map(|_| ()).map_err(|_| ());
 
+
+
+    // let mark = Instant::now();
     for val in filtered {
         write_json(&val, 0, indentation_step, tab_indentation, colored, &mut write_stdout)?;
         write_stdout("\n")?;
@@ -159,6 +165,7 @@ fn main() -> Result<(),()> {
             std::mem::forget(val);
         }
     }
+    // println!("Writing out took: {}ms", mark.elapsed().as_millis());
 
     Ok(())
 }
