@@ -11,7 +11,7 @@ mod json_model;
 use std::{fs::File, io::BufReader, io::Read, io::Write, rc::Rc, time::Instant};
 
 use filters::apply_filter;//, apply_filter_hardcoded};
-use json_model::{JSONValue, write_json};
+use json_model::{JSONValue, create_indentation_string, write_json};
 
 
 fn main() -> Result<(),()> {
@@ -123,42 +123,34 @@ fn main() -> Result<(),()> {
         std::mem::forget(json_str);
     }
 
+    let filter_str = matches.value_of("PATTERN").unwrap();
+    let filter_parsed = filter_parser::parse(filter_str).unwrap();
+
 
 
     // let mark = Instant::now();
     // let json_parsed: Vec<JSONValue> = json_parsed.collect();
-
     // println!("JSON parse took: {}ms", mark.elapsed().as_millis());
-
-    // let filter_str = matches.value_of("PATTERN").unwrap();
-    // let filter_parsed = filter_parser::parse(filter_str).unwrap();
 
     // let mark = Instant::now();
     // let filtered: Vec<JSONValue> = apply_filter(&filter_parsed, json_parsed.into_iter()).collect();
     // println!("Filtering took: {}ms", mark.elapsed().as_millis());
 
-    // let mut out_string = String::with_capacity(89000000);
-    // let mut write_stdout = |s: &str| {
-    //     out_string.push_str(s);
-
-    //     Ok(())
-    // };
+    // let mut out = std::io::sink();
 
 
-
-    let filter_str = matches.value_of("PATTERN").unwrap();
-    let filter_parsed = filter_parser::parse(filter_str).unwrap();
 
     let filtered = apply_filter(&filter_parsed, json_parsed);
 
-    let mut stdout = std::io::stdout();
-    let mut write_stdout = move |s: &str| stdout.write_all(s.as_bytes()).map(|_| ()).map_err(|_| ());
+    let mut out = std::io::stdout();
 
 
+    let mut write_stdout = move |s: &str| out.write_all(s.as_bytes()).map(|_| ()).map_err(|_| ());
 
     // let mark = Instant::now();
+    let indentation_string = create_indentation_string(indentation_step, tab_indentation);
     for val in filtered {
-        write_json(&val, 0, indentation_step, tab_indentation, colored, &mut write_stdout)?;
+        write_json(&val, 0, &indentation_string, colored, &mut write_stdout)?;
         write_stdout("\n")?;
 
         if no_free {

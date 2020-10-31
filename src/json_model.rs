@@ -285,7 +285,7 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
 
 impl<'a> Display for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write_json(self, 0, 2, false, false, &mut |s| f.write_str(s))
+        write_json(self, 0, "  ", false, &mut |s| f.write_str(s))
     }
 }
 
@@ -297,8 +297,7 @@ const BLACK: &str = "\u{1b}[30m";
 pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
     val: &JSONValue<'a>,
     indentation: i32,
-    indentation_step: u8,
-    tab_indentation: bool,
+    indentation_string: &str,
     colored: bool,
     write_str: &mut W,
 ) -> Result<(), E> {
@@ -323,8 +322,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
                 write_newline_and_indentation(
                     write_str,
                     indentation + 1,
-                    indentation_step,
-                    tab_indentation,
+                    indentation_string,
                 )?;
 
                 if colored {
@@ -350,8 +348,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
                 write_json(
                     &value,
                     indentation + 1,
-                    indentation_step,
-                    tab_indentation,
+                    indentation_string,
                     colored,
                     write_str,
                 )?;
@@ -360,8 +357,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
             write_newline_and_indentation(
                 write_str,
                 indentation,
-                indentation_step,
-                tab_indentation,
+                indentation_string,
             )?;
             write_str("}")
         }
@@ -379,14 +375,12 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
                 write_newline_and_indentation(
                     write_str,
                     indentation + 1,
-                    indentation_step,
-                    tab_indentation,
+                    indentation_string,
                 )?;
                 write_json(
                     value,
                     indentation + 1,
-                    indentation_step,
-                    tab_indentation,
+                    indentation_string,
                     colored,
                     write_str,
                 )?;
@@ -395,8 +389,7 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
             write_newline_and_indentation(
                 write_str,
                 indentation,
-                indentation_step,
-                tab_indentation,
+                indentation_string,
             )?;
             write_str("]")
         }
@@ -458,24 +451,32 @@ pub fn write_json<'a, E, W: FnMut(&str) -> Result<(), E>>(
 fn write_newline_and_indentation<E, W: FnMut(&str) -> Result<(), E>>(
     write_str: &mut W,
     indentation: i32,
-    indentation_step: u8,
-    tab_indentation: bool,
+    indentation_string: &str,
 ) -> Result<(), E> {
     write_str("\n")?;
 
-    if tab_indentation {
-        for _ in 0..indentation {
-            write_str("\t")?;
-        }
-    } else {
-        for _ in 0..indentation {
-            for _ in 0..indentation_step {
-                write_str(" ")?;
-            }
-        }
+    for _ in 0..indentation {
+        write_str(indentation_string)?;
     }
 
     Ok(())
+}
+
+pub fn create_indentation_string(
+    indentation_step: u8,
+    tab_indentation: bool,
+) -> String {
+    if tab_indentation {
+        String::from("\t")
+    } else {
+        let mut s = String::new();
+
+        for _ in 0..indentation_step {
+            s.push(' ');
+        }
+
+        s
+    }
 }
 
 #[cfg(test)]
