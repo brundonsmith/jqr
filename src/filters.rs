@@ -358,15 +358,15 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         panic!(format!("Cannot add values {} and {}", JSONValue::Array(a.clone()), b));
     }
 
-    // if let JSONValue::Object(a) = a.clone() {
-    //     if let JSONValue::Object(b) = b {
-    //         let mut res = a;
-    //         for (key, value) in b {
-    //             res.insert(key, value);
-    //         }
-    //         return JSONValue::Object(res);
-    //     }
-    // }
+    if let JSONValue::Object(a) = &a {
+        if let JSONValue::Object(b) = &b {
+            return JSONValue::Object(Rc::new((
+                a.as_ref().0.iter().chain(b.as_ref().0.iter())
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            , None)));
+        }
+    }
 
     panic!(format!("Cannot add values {} and {}", a, b));
 }
@@ -677,6 +677,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_18() {
+        test_filter(
+            "{
+                \"a\": { \"foo\": 12 },
+                \"b\": { \"bar\": 13 } 
+            }",
+            ".a + .b",
+            "{
+                \"foo\": 12,
+                \"bar\": 13
+            }")
+    }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
         let input = json_parser::parse(input_json, false).map(|r| r.unwrap());
