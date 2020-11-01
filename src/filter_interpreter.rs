@@ -209,7 +209,21 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 
             panic!("Can't call has({}) on {}", key, val);
         })),
-        Filter::Type => Box::new(values.map(|v| JSONValue::String { s: v.type_name(), needs_escaping: false })),
+        Filter::Type => Box::new(values.map(|val| JSONValue::String { s: val.type_name(), needs_escaping: false })),
+        Filter::Min => Box::new(values.map(|val| {
+            if let JSONValue::Array(contents) = &val {
+                return contents.iter().min().cloned().unwrap_or(JSONValue::Null);
+            }
+
+            panic!("Cannot get the min of {}", val);
+        })),
+        Filter::Max => Box::new(values.map(|val| {
+            if let JSONValue::Array(contents) = &val {
+                return contents.iter().max().cloned().unwrap_or(JSONValue::Null);
+            }
+
+            panic!("Cannot get the max of {}", val);
+        })),
 
         // Filter::_PropertyChain(props) => Box::new(values.map(move |val| -> JSONValue {
         //     let mut next = val.as_ref();
@@ -813,6 +827,21 @@ mod tests {
     #[test]
     fn test_28() {
         test_filter("[ false, null, {}, [], 12 ]", "map(type)", "[ \"boolean\", \"null\", \"object\", \"array\", \"number\" ]")
+    }
+
+    #[test]
+    fn test_29() {
+        test_filter("[ 5, 2, 9, 8, 3 ]", "min", "2")
+    }
+
+    #[test]
+    fn test_30() {
+        test_filter("[ ]", "min", "null")
+    }
+
+    #[test]
+    fn test_31() {
+        test_filter("[ 5, 2, 9, 8, 3 ]", "max", "9")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {

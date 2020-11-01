@@ -285,6 +285,8 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
             "not" => Ok(Filter::Not),
             "sort" => Ok(Filter::Sort),
             "type" => Ok(Filter::Type),
+            "min" => Ok(Filter::Min),
+            "max" => Ok(Filter::Max),
             _ => {
                 try_eat(tokens, index, "(")?;
 

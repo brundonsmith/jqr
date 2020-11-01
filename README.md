@@ -58,7 +58,7 @@ Partial re-implementation of the `jq` command line utility in Rust
   - `flatten` ⚠️
   - `type` ✅
   - `sort`, `sort_by(path_expression)` ✅
-  - `min`, `max` ⚠️
+  - `min`, `max` ✅
   - `reverse` ⚠️
   - `contains` ⚠️
   - `tojson`/`fromjson` ⚠️
