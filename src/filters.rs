@@ -181,7 +181,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     },
                     JSONValue::Null => 0,
                     JSONValue::Object(x) => x.as_ref().0.keys().len(),
-                    _ => panic!(format!("Cannot get the length of {}", val)),
+                    _ => panic!("Cannot get the length of {}", val),
                 } as i32
             )
         })),
@@ -201,7 +201,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                             .map(|v| apply_filter(pred, std::iter::once(v.clone())))
                             .flatten()
                             .collect())),
-                _ => panic!(format!("Cannot map over value {}", val))
+                _ => panic!("Cannot map over value {}", val),
             }
         })),
         Filter::Select(pred) => Box::new(values.filter(move |val|
@@ -317,49 +317,21 @@ fn keys<'a>(val: JSONValue<'a>) -> Vec<JSONValue<'a>> {
     }
 }
 
-enum NumberPair {
-    Floats(f32, f32),
-    Ints(i32, i32),
-}
-
-impl NumberPair {
-    pub fn from_values(a: &JSONValue, b: &JSONValue) -> Option<NumberPair> {
-        match a {
-            JSONValue::Float(a) => {
-                match b {
-                    JSONValue::Float(b) => Some(NumberPair::Floats(*a, *b)),
-                    JSONValue::Integer(b) => Some(NumberPair::Floats(*a, *b as f32)),
-                    _ => None,
-                }
-            },
-            JSONValue::Integer(a) => {
-                match b {
-                    JSONValue::Float(b) => Some(NumberPair::Floats(*a as f32, *b)),
-                    JSONValue::Integer(b) => Some(NumberPair::Ints(*a, *b)),
-                    _ => None,
-                }
-            },
-
-            _ => None,
-        }
-    }
-}
-
-macro_rules! numeric_operation {
-    ($a:ident, $b:ident, $op:tt) => {
-        if let Some(pair) = NumberPair::from_values(&$a, &$b) {
-            return match pair {
-                NumberPair::Floats(a, b) => JSONValue::Float(a $op b),
-                NumberPair::Ints(a, b) => JSONValue::Integer(a $op b),
-            }
-        }
-    };
-}
 
 fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    numeric_operation!(a, b, +);
+    if let JSONValue::Integer(a) = a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::Integer(a + b);
+        }
+    }
+
+    if let Some(a) = a.as_float() {
+        if let Some(b) = b.as_float() {
+            return JSONValue::Float(a + b);
+        }
+    }
     
     if a == JSONValue::Null {
         return b.clone();
@@ -405,7 +377,17 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    numeric_operation!(a, b, -);
+    if let JSONValue::Integer(a) = a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::Integer(a - b);
+        }
+    }
+
+    if let Some(a) = a.as_float() {
+        if let Some(b) = b.as_float() {
+            return JSONValue::Float(a - b);
+        }
+    }
     
     if let JSONValue::Array(a) = &a {
         if let JSONValue::Array(b) = b {
@@ -424,41 +406,82 @@ fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    numeric_operation!(a, b, *);
+    if let JSONValue::Integer(a) = a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::Integer(a * b);
+        }
+    }
+
+    if let Some(a) = a.as_float() {
+        if let Some(b) = b.as_float() {
+            return JSONValue::Float(a * b);
+        }
+    }
 
     if let JSONValue::String { s: a, needs_escaping: _ } = &a {
         if let JSONValue::Integer(b) = b {
-            return JSONValue::AllocatedString(Rc::new(repeated_str(a, b)));
+            return repeated_str(a, b);
         }
     } else if let JSONValue::AllocatedString(a) = &a {
         if let JSONValue::Integer(b) = b {
-            return JSONValue::AllocatedString(Rc::new(repeated_str(a, b)));
+            return repeated_str(a, b);
         }
     } else if let JSONValue::Integer(a) = &a {
         if let JSONValue::String { s: b, needs_escaping: _ } = b {
-            return JSONValue::AllocatedString(Rc::new(repeated_str(b, *a)));
+            return repeated_str(b, *a);
         } else if let JSONValue::AllocatedString(b) = b {
-            return JSONValue::AllocatedString(Rc::new(repeated_str(&b, *a)));
+            return repeated_str(&b, *a);
+        }
+    }
+
+    if let JSONValue::Object(a) = &a {
+        if let JSONValue::Object(b) = b {
+            todo!()
         }
     }
 
     panic!(format!("Cannot multiply values {} and {}", a, b));
 }
 
-fn repeated_str(s: &str, n: i32) -> String {
-    let mut res = String::with_capacity(s.len() * n as usize);
+fn repeated_str<'a, 'b>(s: &'a str, n: i32) -> JSONValue<'b> {
+    if n == 0 {
+        return JSONValue::Null;
+    } else {
+        let mut res = String::with_capacity(s.len() * n as usize);
 
-    for _ in 0..n {
-        res.push_str(s);
+        for _ in 0..n {
+            res.push_str(s);
+        }
+
+        return JSONValue::AllocatedString(Rc::new(res));
     }
-
-    return res;
 }
 
 fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    numeric_operation!(a, b, /);
+    if let JSONValue::Integer(a) = a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::Integer(a / b);
+        }
+    }
+
+    if let Some(a) = a.as_float() {
+        if let Some(b) = b.as_float() {
+            return JSONValue::Float(a / b);
+        }
+    }
+
+    if let Some((a, ane)) = a.as_str() {
+        if let Some((b, bne)) = b.as_str() {
+            todo!()
+            // return JSONValue::Array(Rc::new(
+            //     a.split(b)
+            //         .map(|s| JSONValue::String { s, needs_escaping: ane || bne })
+            //         .collect()
+            // ));
+        }
+    }
 
     panic!(format!("Cannot divide values {} and {}", a, b));
 }
@@ -466,7 +489,17 @@ fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 fn modulo<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    numeric_operation!(a, b, %);
+    if let JSONValue::Integer(a) = a {
+        if let JSONValue::Integer(b) = b {
+            return JSONValue::Integer(a % b);
+        }
+    }
+
+    if let Some(a) = a.as_float() {
+        if let Some(b) = b.as_float() {
+            return JSONValue::Float(a % b);
+        }
+    }
 
     panic!(format!("Cannot get the modulus of values {} and {}", a, b));
 }
