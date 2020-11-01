@@ -48,6 +48,7 @@ pub enum Filter<'a> {
     Type,
     Min,
     Max,
+    Flatten,
 
     // _MapSelect(Box<Filter<'a>>),
     // _PropertyChain(Vec<(&'a str, bool)>),

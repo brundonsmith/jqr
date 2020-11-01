@@ -224,6 +224,17 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 
             panic!("Cannot get the max of {}", val);
         })),
+        Filter::Flatten => Box::new(values.map(|val| {
+            if let JSONValue::Array(contents) = val {
+                let mut res = Vec::new();
+
+                flatten_recursive(contents.as_ref(), &mut res);
+
+                return JSONValue::Array(Rc::new(res));
+            }
+
+            panic!("Cannot flatten {}", val);
+        })),
 
         // Filter::_PropertyChain(props) => Box::new(values.map(move |val| -> JSONValue {
         //     let mut next = val.as_ref();
@@ -240,6 +251,15 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 
         //     Rc::new(next.clone())
         // })),
+    }
+}
+
+fn flatten_recursive<'a: 'b, 'b>(vals: &'b Vec<JSONValue<'a>>, result: &mut Vec<JSONValue<'a>>) {
+    for val in vals {
+        match val {
+            JSONValue::Array(contents) => flatten_recursive(contents, result),
+            _ => result.push(val.clone()),
+        }
     }
 }
 
@@ -842,6 +862,11 @@ mod tests {
     #[test]
     fn test_31() {
         test_filter("[ 5, 2, 9, 8, 3 ]", "max", "9")
+    }
+
+    #[test]
+    fn test_32() {
+        test_filter("[1, [2], [[3], 4]]", "flatten", "[1, 2, 3, 4]")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {

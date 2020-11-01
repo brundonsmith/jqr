@@ -18,10 +18,10 @@ Partial re-implementation of the `jq` command line utility in Rust
   <!-- - `--kind`. This is different than jq ✅
     - `--kind=file` and the 2nd argument can be a json file
     - `--kind=inline` and the 2nd argument can be a json as a string -->
-  - `--tab`
-  - `--indent n`
+  - `--tab` ✅
+  - `--indent n` ✅
   - `--color-output / -C` and `--monochrome-output / -M` ✅
-  - Whitespace-separated JSON values ✅
+  - Whitespace-separated JSON values as input ✅
   - ...rest ⚠️
 
 - #### [Basic filters](https://stedolan.github.io/jq/manual/v1.6/#Basicfilters)
@@ -49,13 +49,13 @@ Partial re-implementation of the `jq` command line utility in Rust
   - Multiplication, division, modulo: `*`, `/`, and `%` ✅
   - `length` ✅
   - `keys`, `key_unsorted` ✅
+  - `map` ✅
+  - `select` ✅
   - `has(key)` ✅
   - `in` ⚠️
-  - `map` ✅
+  - `flatten` ✅
   - `map_values` ⚠️
   - `del` ⚠️
-  - `select` ✅
-  - `flatten` ⚠️
   - `type` ✅
   - `sort`, `sort_by(path_expression)` ✅
   - `min`, `max` ✅
