@@ -194,6 +194,21 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 _ => panic!("Cannot sort {}", val),
             }
         })),
+        Filter::Has(key) => Box::new(values.map(move |val| {
+            if let Some((key, _)) = key.as_str() {
+                if let JSONValue::Object(contents) = val {
+                    return JSONValue::Bool(contents.as_ref().0.contains_key(&JSONValue::String { s: key, needs_escaping: false }));
+                }
+            }
+            
+            if let JSONValue::Integer(key) = key {
+                if let JSONValue::Array(contents) = val {
+                    return JSONValue::Bool((*key as usize) < contents.len());
+                }
+            }
+
+            panic!("Can't call has({}) on {}", key, val);
+        })),
 
         // Filter::_PropertyChain(props) => Box::new(values.map(move |val| -> JSONValue {
         //     let mut next = val.as_ref();
@@ -772,6 +787,26 @@ mod tests {
     #[test]
     fn test_23() {
         test_filter("23", "(. + 3) * 2", "52")
+    }
+
+    #[test]
+    fn test_24() {
+        test_filter("{ \"foo\": 12 }", "has(\"foo\")", "true")
+    }
+
+    #[test]
+    fn test_25() {
+        test_filter("{ \"foo\": 12 }", "has(\"bar\")", "false")
+    }
+
+    #[test]
+    fn test_26() {
+        test_filter("[ 55, 44, 33 ]", "has(33)", "false")
+    }
+
+    #[test]
+    fn test_27() {
+        test_filter("[ 55, 44, 33 ]", "has(2)", "true")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {

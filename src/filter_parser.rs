@@ -287,14 +287,24 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
             _ => {
                 try_eat(tokens, index, "(")?;
 
-                let inner = Box::new(filter(tokens, index)?);
+                let inner = filter(tokens, index)?;
 
                 try_eat(tokens, index, ")")?;
 
                 match *func {
-                    "map" => Ok(Filter::Map(inner)),
-                    "select" => Ok(Filter::Select(inner)),
-                    "sort_by" => Ok(Filter::SortBy(inner)),
+                    "map" => Ok(Filter::Map(Box::new(inner))),
+                    "select" => Ok(Filter::Select(Box::new(inner))),
+                    "sort_by" => Ok(Filter::SortBy(Box::new(inner))),
+                    "has" => {
+                        if let Filter::Literal(key) = inner {
+                            Ok(Filter::Has(key))
+                        } else {
+                            Err(ParseError {
+                                token: tokens.get(*index - 1).cloned(),
+                                msg: format!("Expected string or number inside has(); got '{:?}'", inner),
+                            })
+                        }
+                    },
                     _ => Err(ParseError {
                         token: tokens.get(*index - 1).cloned(),
                         msg: format!("Function '{}' is unknown", func),

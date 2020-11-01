@@ -44,6 +44,7 @@ pub enum Filter<'a> {
     Select(Box<Filter<'a>>),
     Sort,
     SortBy(Box<Filter<'a>>),
+    Has(JSONValue<'a>),
 
     // _MapSelect(Box<Filter<'a>>),
     // _PropertyChain(Vec<(&'a str, bool)>),
