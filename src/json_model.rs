@@ -23,8 +23,8 @@ impl<'a> JSONValue<'a> {
             JSONValue::AllocatedString(_) => "string",
             JSONValue::String { s: _, needs_escaping: _, } => "string",
             JSONValue::Integer(_) => "number",
-            JSONValue::Float(_) => "float",
-            JSONValue::Bool(_) => "bool",
+            JSONValue::Float(_) => "number",
+            JSONValue::Bool(_) => "boolean",
             JSONValue::Null => "null",
         }
     }

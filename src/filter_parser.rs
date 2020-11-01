@@ -284,6 +284,7 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
             "keys_unsorted" => Ok(Filter::KeysUnsorted),
             "not" => Ok(Filter::Not),
             "sort" => Ok(Filter::Sort),
+            "type" => Ok(Filter::Type),
             _ => {
                 try_eat(tokens, index, "(")?;
 

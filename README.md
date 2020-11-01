@@ -49,14 +49,14 @@ Partial re-implementation of the `jq` command line utility in Rust
   - Multiplication, division, modulo: `*`, `/`, and `%` ✅
   - `length` ✅
   - `keys`, `key_unsorted` ✅
-  - `has(key)` ⚠️
+  - `has(key)` ✅
   - `in` ⚠️
   - `map` ✅
   - `map_values` ⚠️
   - `del` ⚠️
   - `select` ✅
   - `flatten` ⚠️
-  - `type` ⚠️
+  - `type` ✅
   - `sort`, `sort_by(path_expression)` ✅
   - `min`, `max` ⚠️
   - `reverse` ⚠️

@@ -209,6 +209,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 
             panic!("Can't call has({}) on {}", key, val);
         })),
+        Filter::Type => Box::new(values.map(|v| JSONValue::String { s: v.type_name(), needs_escaping: false })),
 
         // Filter::_PropertyChain(props) => Box::new(values.map(move |val| -> JSONValue {
         //     let mut next = val.as_ref();
@@ -807,6 +808,11 @@ mod tests {
     #[test]
     fn test_27() {
         test_filter("[ 55, 44, 33 ]", "has(2)", "true")
+    }
+
+    #[test]
+    fn test_28() {
+        test_filter("[ false, null, {}, [], 12 ]", "map(type)", "[ \"boolean\", \"null\", \"object\", \"array\", \"number\" ]")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
