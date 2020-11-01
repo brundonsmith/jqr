@@ -3,14 +3,15 @@
 extern crate clap;
 extern crate atty;
 
-mod json_parser;
-mod filter_parser;
-mod filters;
 mod json_model;
+mod json_parser;
+mod filter_model;
+mod filter_parser;
+mod filter_interpreter;
 
 use std::{fs::File, io::BufReader, io::Read, io::Write, rc::Rc, time::Instant};
 
-use filters::apply_filter;//, apply_filter_hardcoded};
+use filter_interpreter::apply_filter;//, apply_filter_hardcoded};
 use json_model::{JSONValue, create_indentation_string, write_json};
 
 

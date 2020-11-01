@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
-use crate::filters::Filter;
-use crate::json_model::JSONValue;
+use crate::{filter_model::Filter, json_model::JSONValue};
 
 
 
@@ -496,8 +495,7 @@ fn optimize<'a>(filter: &Filter<'a>) -> Filter<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
-    use crate::filters::Filter;
+    use crate::filter_model::Filter;
     use crate::filter_parser::parse;
     use crate::json_model::JSONValue;
 
