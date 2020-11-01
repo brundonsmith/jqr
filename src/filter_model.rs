@@ -22,6 +22,7 @@ pub enum Filter<'a> {
     Multiply { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
     Divide { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
     Modulo { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    Alternative { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
 
     // comparison
     Equal { left: Box<Filter<'a>>, right: Box<Filter<'a>> },

@@ -143,8 +143,8 @@ fn match_pred<F: Fn(char) -> bool>(code: &str, pred: F) -> usize {
 }
 
 const SPECIAL_TOKENS: [&str; 26] = ["{", "}", "[", "]", "(", ")", ",", "|", ":", 
-".", "?", "+", "-", "*", "/", "%", "==", "!=", ">", ">=", "<", "<=", "and", 
-"or", "not", "//"];
+".", "?", "+", "-", "*", "//", "/", "%", "==", "!=", ">", ">=", "<", "<=", "and", 
+"or", "not"];
 
 
 
@@ -203,7 +203,7 @@ macro_rules! match_one {
 fn operation_tier_1<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
     let mut left = operation_tier_2(tokens, index)?;
 
-    while match_one!(tokens, index, "and", "or") {
+    while match_one!(tokens, index, "and", "or", "//") {
         if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
             *index += 1;
             let right = operation_tier_2(tokens, index)?;
@@ -269,6 +269,7 @@ fn op_filter_from_special<'a>(special: &'a str, left: Filter<'a>, right: Filter<
         "*" => Filter::Multiply { left: Box::new(left), right: Box::new(right) },
         "/" => Filter::Divide { left: Box::new(left), right: Box::new(right) },
         "%" => Filter::Modulo { left: Box::new(left), right: Box::new(right) },
+        "//" => Filter::Alternative { left: Box::new(left), right: Box::new(right) },
         _ => unreachable!(),
     }
 }

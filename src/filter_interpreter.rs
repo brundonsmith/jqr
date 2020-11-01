@@ -109,6 +109,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::LessThanOrEqual { left, right } => applied_to_combinations(values, left, right, less_than_or_equal),
         Filter::GreaterThan { left, right } => applied_to_combinations(values, left, right, greater_than),
         Filter::GreaterThanOrEqual { left, right } => applied_to_combinations(values, left, right, greater_than_or_equal),
+        Filter::Alternative { left, right } => applied_to_combinations(values, left, right, alternative),
 
         Filter::And { left, right } => applied_to_combinations(values, left, right, and),
         Filter::Or { left, right } => applied_to_combinations(values, left, right, or),
@@ -496,6 +497,16 @@ fn greater_than_or_equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<
     JSONValue::Bool(ord == Ordering::Greater || ord == Ordering::Equal)
 }
 
+fn alternative<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
+    let (a, b) = vals;
+
+    if a == JSONValue::Null || a == JSONValue::Bool(false) {
+        return b;
+    } else {
+        return a;
+    }
+}
+
 fn and<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
@@ -733,6 +744,14 @@ mod tests {
     #[test]
     fn test_20() {
         test_filter("\"foo\"", "3 * .", "\"foofoofoo\"")
+    }
+
+    #[test]
+    fn test_21() {
+        test_filter(
+            "[ null, 12, 0, \"\", false ]", 
+            "map(. // \"ALTERNATIVE\")", 
+            "[ \"ALTERNATIVE\", 12, 0, \"\", \"ALTERNATIVE\" ]")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
