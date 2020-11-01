@@ -231,12 +231,36 @@ impl<'a> PartialOrd for JSONValue<'a> {
                         return Some(ord);
                     }
                 }
+
+                return Some(Ordering::Equal);
             }
         }
 
         if let JSONValue::Object(s) = self {
             if let JSONValue::Object(other) = other {
-                todo!()
+                let mut self_keys: Vec<&JSONValue> = s.as_ref().0.keys().collect();
+                let mut other_keys: Vec<&JSONValue> = other.as_ref().0.keys().collect();
+
+                self_keys.sort();
+                other_keys.sort();
+
+                for (a, b) in self_keys.iter().zip(other_keys.iter()) {
+                    let ord = a.partial_cmp(b).unwrap();
+
+                    if ord != Ordering::Equal {
+                        return Some(ord);
+                    }
+                }
+
+                for (a, b) in self_keys.iter().map(|k| s.as_ref().0.get(k).unwrap()).zip(other_keys.iter().map(|k| other.as_ref().0.get(k).unwrap())) {
+                    let ord = a.partial_cmp(b).unwrap();
+
+                    if ord != Ordering::Equal {
+                        return Some(ord);
+                    }
+                }
+
+                return Some(Ordering::Equal);
             }
         }
 

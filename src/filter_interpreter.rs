@@ -869,6 +869,22 @@ mod tests {
         test_filter("[1, [2], [[3], 4]]", "flatten", "[1, 2, 3, 4]")
     }
 
+    #[test]
+    fn test_33() {
+        test_filter(
+            "[[1, 2, 4], [1, 2, 3], [2, 3, 4]]",
+            "sort",
+            "[[1, 2, 3], [1, 2, 4], [2, 3, 4]]")
+    }
+
+    #[test]
+    fn test_34() {
+        test_filter(
+            "[{\"foo\":4, \"bar\":10}, {\"foo\":3, \"bar\":100}, {\"foo\":2, \"bar\":1}]",
+            "sort",
+            "[{\"foo\":2, \"bar\":1}, {\"foo\":4, \"bar\":10}, {\"foo\":3, \"bar\":100}]")
+    }
+
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
         let input = json_parser::parse(input_json, false).map(|r| r.unwrap());
         let filter = filter_parser::parse(filter).unwrap();
