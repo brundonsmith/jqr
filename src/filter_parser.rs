@@ -283,6 +283,7 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
             "keys" => Ok(Filter::Keys),
             "keys_unsorted" => Ok(Filter::KeysUnsorted),
             "not" => Ok(Filter::Not),
+            "sort" => Ok(Filter::Sort),
             _ => {
                 try_eat(tokens, index, "(")?;
 
@@ -293,6 +294,7 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
                 match *func {
                     "map" => Ok(Filter::Map(inner)),
                     "select" => Ok(Filter::Select(inner)),
+                    "sort_by" => Ok(Filter::SortBy(inner)),
                     _ => Err(ParseError {
                         token: tokens.get(*index - 1).cloned(),
                         msg: format!("Function '{}' is unknown", func),

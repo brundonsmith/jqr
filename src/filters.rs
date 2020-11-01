@@ -43,6 +43,8 @@ pub enum Filter<'a> {
     KeysUnsorted,
     Map(Box<Filter<'a>>),
     Select(Box<Filter<'a>>),
+    Sort,
+    SortBy(Box<Filter<'a>>),
 
     // _MapSelect(Box<Filter<'a>>),
     // _PropertyChain(Vec<(&'a str, bool)>),
@@ -206,6 +208,35 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
             apply_filter(pred, std::iter::once(val.clone()))
                 .all(|v| v == JSONValue::Bool(true))
         )),
+        Filter::Sort => Box::new(values.map(move |val| {
+            match val {
+                JSONValue::Array(arr) => {
+                    let mut res = arr.as_ref().clone();
+
+                    res.sort();
+
+                    JSONValue::Array(Rc::new(res))
+                },
+                _ => panic!("Cannot sort {}", val),
+            }
+        })),
+        Filter::SortBy(inner) => Box::new(values.map(move |val| {
+            match val {
+                JSONValue::Array(arr) => {
+                    let mut res = arr.as_ref().clone();
+
+                    res.sort_by(|a, b| {
+                        let a = apply_filter(inner, std::iter::once(a.clone())).next().unwrap();
+                        let b = apply_filter(inner, std::iter::once(b.clone())).next().unwrap();
+
+                        a.cmp(&b)
+                    });
+
+                    JSONValue::Array(Rc::new(res))
+                },
+                _ => panic!("Cannot sort {}", val),
+            }
+        })),
 
         // Filter::_PropertyChain(props) => Box::new(values.map(move |val| -> JSONValue {
         //     let mut next = val.as_ref();

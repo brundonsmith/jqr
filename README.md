@@ -56,7 +56,7 @@ Partial re-implementation of the `jq` command line utility in Rust
   - `select` ✅
   - `flatten` ⚠️
   - `type` ⚠️
-  - `sort`, `sort_by(path_expression)` ⚠️
+  - `sort`, `sort_by(path_expression)` ✅
   - `min`, `max` ⚠️
   - `reverse` ⚠️
   - `contains` ⚠️
