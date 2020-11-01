@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash, collections::HashSet, rc::Rc};
+use std::{collections::HashMap, fmt::Display, hash::Hash, cmp::Ordering, rc::Rc};
 
 use crate::json_parser::object_entries;
 
@@ -15,19 +15,33 @@ pub enum JSONValue<'a> {
 }
 
 impl<'a> JSONValue<'a> {
+
     pub fn type_name(&self) -> &'static str {
         match self {
             JSONValue::Object(_) => "object",
             JSONValue::Array(_) => "array",
             JSONValue::AllocatedString(_) => "string",
-            JSONValue::String {
-                s: _,
-                needs_escaping: _,
-            } => "string",
+            JSONValue::String { s: _, needs_escaping: _, } => "string",
             JSONValue::Integer(_) => "number",
             JSONValue::Float(_) => "float",
             JSONValue::Bool(_) => "bool",
             JSONValue::Null => "null",
+        }
+    }
+
+    pub fn as_str(&'a self) -> Option<(&'a str, bool)> {
+        match self {
+            JSONValue::String { s, needs_escaping } => Some((s, *needs_escaping)),
+            JSONValue::AllocatedString(s) => Some((s.as_str(), false)),
+            _ => None,
+        }
+    }
+
+    pub fn as_float(&self) -> Option<f32> {
+        match self {
+            JSONValue::Float(n) => Some(*n),
+            JSONValue::Integer(n) => Some(*n as f32),
+            _ => None,
         }
     }
 }
@@ -195,55 +209,28 @@ impl<'a> PartialOrd for JSONValue<'a> {
             return cmp_key_self.partial_cmp(&cmp_key_other);
         }
 
-        if let JSONValue::String {
-            s,
-            needs_escaping: _,
-        } = self
-        {
-            if let JSONValue::String {
-                s: other,
-                needs_escaping: _,
-            } = other
-            {
-                return s.partial_cmp(other);
-            }
-            if let JSONValue::AllocatedString(other) = other {
-                return s.partial_cmp(&other.as_str());
-            }
-        } else if let JSONValue::AllocatedString(s) = self {
-            if let JSONValue::String {
-                s: other,
-                needs_escaping: _,
-            } = other
-            {
-                return s.as_str().partial_cmp(other);
-            }
-            if let JSONValue::AllocatedString(other) = other {
+        if let Some((s, sne)) = self.as_str() {
+            if let Some((other, one)) = other.as_str() {
+                // TODO: Handle escapes
                 return s.partial_cmp(other);
             }
         }
 
-        if let JSONValue::Integer(s) = self {
-            if let JSONValue::Integer(other) = other {
-                return s.partial_cmp(other);
-            }
-            if let JSONValue::Float(other) = other {
-                return (*s as f32).partial_cmp(other);
-            }
-        }
-
-        if let JSONValue::Float(s) = self {
-            if let JSONValue::Integer(other) = other {
-                return s.partial_cmp(&(*other as f32));
-            }
-            if let JSONValue::Float(other) = other {
-                return s.partial_cmp(other);
+        if let Some(s) = self.as_float() {
+            if let Some(other) = other.as_float() {
+                return s.partial_cmp(&other);
             }
         }
 
         if let JSONValue::Array(s) = self {
             if let JSONValue::Array(other) = other {
-                todo!()
+                for (a, b) in s.iter().zip(other.iter()) {
+                    let ord = a.partial_cmp(b).unwrap();
+
+                    if ord != Ordering::Equal {
+                        return Some(ord);
+                    }
+                }
             }
         }
 
@@ -253,7 +240,7 @@ impl<'a> PartialOrd for JSONValue<'a> {
             }
         }
 
-        None
+        unreachable!()
     }
 }
 
