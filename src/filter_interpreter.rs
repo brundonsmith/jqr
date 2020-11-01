@@ -502,14 +502,32 @@ fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    if let Some((a, ane)) = a.as_str() {
+    if let JSONValue::String { s: a, needs_escaping: ane } = &a {
         if let Some((b, bne)) = b.as_str() {
-            todo!()
-            // return JSONValue::Array(Rc::new(
-            //     a.split(b)
-            //         .map(|s| JSONValue::String { s, needs_escaping: ane || bne })
-            //         .collect()
-            // ));
+            return JSONValue::Array(Rc::new(
+                a.split(b)
+                    .map(|s| JSONValue::String { s, needs_escaping: *ane || bne })
+                    .collect()
+            ));
+        }
+    }
+
+    if let JSONValue::AllocatedString(a) = &a {
+        if let Some((b, bne)) = b.as_str() {
+            return JSONValue::Array(Rc::new(
+                if bne {
+                    let b = apply_escapes(b);
+                    let b = b.as_str();
+
+                    a.split(b)
+                        .map(|s| JSONValue::AllocatedString(Rc::new(String::from(s))))
+                        .collect()
+                } else {
+                    a.split(b)
+                        .map(|s| JSONValue::AllocatedString(Rc::new(String::from(s))))
+                        .collect()
+                }
+            ));
         }
     }
 
@@ -914,6 +932,14 @@ mod tests {
             "[ {\"k\": {\"a\": 1, \"b\": 2}}, {\"k\": {\"a\": 0,\"c\": 3}} ]",
             ".[0] * .[1]",
             "{\"k\": {\"a\": 0, \"b\": 2, \"c\": 3}}")
+    }
+
+    #[test]
+    fn test_36() {
+        test_filter(
+            "\"foobarfoobarfoo\"",
+            ". / \"bar\"",
+            "[ \"foo\", \"foo\", \"foo\" ]")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
