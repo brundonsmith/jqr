@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, rc::Rc};
+use std::{collections::HashMap, cmp::Ordering, rc::Rc};
 
 use crate::json_model::{JSONValue, apply_escapes};
 use crate::filter_model::Filter;
@@ -443,7 +443,7 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 
     if let JSONValue::Object(a) = &a {
         if let JSONValue::Object(b) = b {
-            todo!()
+            return merge_objects_recursive(&a.as_ref().0, &b.as_ref().0);
         }
     }
 
@@ -463,6 +463,29 @@ fn repeated_str<'a, 'b>(s: &'a str, n: i32) -> JSONValue<'b> {
         return JSONValue::AllocatedString(Rc::new(res));
     }
 }
+
+fn merge_objects_recursive<'a: 'b, 'b>(a: &'b HashMap<JSONValue<'a>,JSONValue<'a>>, b: &'b HashMap<JSONValue<'a>, JSONValue<'a>>) -> JSONValue<'a> {
+    let mut result_map = HashMap::new();
+
+    for (key, value) in a.iter() {
+        result_map.insert(key.clone(), value.clone());
+    }
+
+    for (key, value) in b.iter() {
+        if let Some(JSONValue::Object(contents_a)) = result_map.get(key) {
+            if let JSONValue::Object(contents_b) = value {
+                result_map.insert(key.clone(), merge_objects_recursive(&contents_a.as_ref().0, &contents_b.as_ref().0));
+                continue;
+            }
+        }
+
+        result_map.insert(key.clone(), value.clone());
+    }
+
+    JSONValue::Object(Rc::new((result_map, None)))
+}
+
+// fn flatten_recursive<'a: 'b, 'b>(vals: &'b Vec<JSONValue<'a>>, result: &mut Vec<JSONValue<'a>>) {
 
 fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
@@ -883,6 +906,14 @@ mod tests {
             "[{\"foo\":4, \"bar\":10}, {\"foo\":3, \"bar\":100}, {\"foo\":2, \"bar\":1}]",
             "sort",
             "[{\"foo\":2, \"bar\":1}, {\"foo\":4, \"bar\":10}, {\"foo\":3, \"bar\":100}]")
+    }
+
+    #[test]
+    fn test_35() {
+        test_filter(
+            "[ {\"k\": {\"a\": 1, \"b\": 2}}, {\"k\": {\"a\": 0,\"c\": 3}} ]",
+            ".[0] * .[1]",
+            "{\"k\": {\"a\": 0, \"b\": 2, \"c\": 3}}")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
