@@ -7,11 +7,11 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
     match filter {
         Filter::Identity => Box::new(values),
         Filter::ObjectIdentifierIndex { identifier, optional } => 
-            Box::new(values.map(move |val| -> JSONValue {
+            Box::new(values.filter_map(move |val| {
                 if let JSONValue::Object(contents) = val {
-                    contents.as_ref().0.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone()
+                    Some(contents.as_ref().0.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone())
                 } else if val == JSONValue::Null && *optional {
-                    JSONValue::Null
+                    None
                 } else {
                     panic!(format!("Error: Object identifier index can only be used on values of type Object; got {}", val))
                 }
@@ -24,11 +24,25 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     panic!(format!("Error: Array index can only be used on values of type Array; got {}", val))
                 }
             })),
-        Filter::Slice { start, end } => 
-            Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=JSONValue>> {
-                Box::new(std::iter::once(
-                    match val {
-                        JSONValue::Array(contents) => {
+        Filter::Slice { start, end, optional } => 
+            Box::new(values.filter_map(move |val| -> Option<Box<dyn Iterator<Item=JSONValue>>> {
+                if JSONValue::Null == val && *optional {
+                    None
+                } else if *start == None && *end == None {
+                    if let JSONValue::Object(contents) = val {
+                        let vals: Vec<JSONValue> = contents.as_ref().0.values().cloned().collect();
+                        Some(Box::new(vals.into_iter()))
+                    } else if let JSONValue::Array(contents) = val {
+                        let vals: Vec<JSONValue> = contents.iter().cloned().collect();
+                        Some(Box::new(vals.into_iter()))
+                    } else if val == JSONValue::Null && *optional {
+                        None
+                    } else {
+                        panic!(format!("Cannot get values of {}", val));
+                    }
+                } else {
+                    Some(Box::new(std::iter::once(
+                        if let JSONValue::Array(contents) = val {
                             if let Some(s) = start {
                                 if let Some(e) = end {
                                     JSONValue::Array(Rc::new(contents.iter().skip(*s).take(*e - *s).map(|v| v.clone()).collect()))
@@ -42,35 +56,25 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                                     JSONValue::Array(contents.clone())
                                 }
                             }
-                        },
-                        JSONValue::String { s: string, needs_escaping } => {
+                        } else if let JSONValue::String { s: string, needs_escaping } = val {
                             if needs_escaping {
                                 let string = apply_escapes(string);
 
                                 JSONValue::AllocatedString(Rc::new(
                                     slice(&string, start, end)
-                                        .expect(&format!("Cannot get values of {}", val))
+                                        .expect(&format!("Cannot get slice of {}", val))
                                 ))
                             } else {
                                 JSONValue::AllocatedString(Rc::new(
                                     slice(&string, start, end)
-                                        .expect(&format!("Cannot get values of {}", val))
+                                        .expect(&format!("Cannot get slice of {}", val))
                                 ))
                             }
-                        },
-                        _ => panic!(format!("Cannot get values of {}", val)),
-                    }
-                ))
-            }).flatten()),
-        Filter::AllValues => 
-            Box::new(values.map(move |val| -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
-                let vals: Vec<JSONValue> = match val {
-                    JSONValue::Object(contents) => contents.as_ref().0.values().cloned().collect(),
-                    JSONValue::Array(contents) => contents.iter().cloned().collect(),
-                    _ => panic!(format!("Cannot get values of {}", val)),
-                };
-
-                Box::new(vals.into_iter())
+                        } else { 
+                            panic!(format!("Cannot get slice of {}", val));
+                        }
+                    )))
+                }
             }).flatten()),
         Filter::Literal(v) => Box::new(std::iter::once(v.clone())),
 
@@ -752,6 +756,17 @@ mod tests {
             "[ null, 12, 0, \"\", false ]", 
             "map(. // \"ALTERNATIVE\")", 
             "[ \"ALTERNATIVE\", 12, 0, \"\", \"ALTERNATIVE\" ]")
+    }
+
+    #[test]
+    fn test_22() {
+        let input = json_parser::parse("null", false).map(|r| r.unwrap());
+        let filter = filter_parser::parse(".[]?").unwrap();
+        println!("{:?}", filter);
+
+        let res = apply_filter(&filter, input).next();
+
+        assert!(res == None);
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {

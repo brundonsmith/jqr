@@ -372,6 +372,7 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>,
                     Ok(Filter::Slice {
                         start: Some(*start),
                         end,
+                        optional: try_eat(tokens, index, "?").is_ok(),
                     })
                 } else {
                     Ok(Filter::ArrayIndex { 
@@ -394,12 +395,17 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>,
                 Ok(Filter::Slice {
                     start: None,
                     end,
+                    optional: try_eat(tokens, index, "?").is_ok(),
                 })
             },
             Some(FilterLexeme::Special("]")) => {
                 *index += 1;
 
-                return Ok(Filter::AllValues); // return early!
+                return Ok(Filter::Slice {
+                    start: None,
+                    end: None,
+                    optional: try_eat(tokens, index, "?").is_ok(),
+                }); // return early!
             },
             token => Err(ParseError {
                 msg: format!("Unexpected token: {:?}", &token),
@@ -517,7 +523,7 @@ mod tests {
     fn test_3() {
         assert_eq!(parse(".foo.[]"), Ok(Filter::Pipe(vec![ 
             Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
-            Filter::AllValues,
+            Filter::Slice { start: None, end: None, optional: false },
         ])));
     }
 
@@ -543,7 +549,7 @@ mod tests {
     fn test_6() {
         assert_eq!(parse(". , .[] , .b"), Ok(Filter::Comma(vec![ 
             Filter::Identity, 
-            Filter::AllValues, 
+            Filter::Slice { start: None, end: None, optional: false }, 
             Filter::ObjectIdentifierIndex { identifier: "b", optional: false }, 
         ])));
     }
@@ -552,10 +558,10 @@ mod tests {
     fn test_7() {
         assert_eq!(parse(".[12] , .[1:5] , .[24:], .[:763], .[:]"), Ok(Filter::Comma(vec![
             Filter::ArrayIndex { index: 12 },
-            Filter::Slice { start: Some(1), end: Some(5) },
-            Filter::Slice { start: Some(24), end: None },
-            Filter::Slice { start: None, end: Some(763) },
-            Filter::Slice { start: None, end: None },
+            Filter::Slice { start: Some(1), end: Some(5), optional: false },
+            Filter::Slice { start: Some(24), end: None, optional: false },
+            Filter::Slice { start: None, end: Some(763), optional: false },
+            Filter::Slice { start: None, end: None, optional: false },
         ])));
     }
 

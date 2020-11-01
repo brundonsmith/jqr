@@ -31,7 +31,7 @@ Partial re-implementation of the `jq` command line utility in Rust
   - Array Index: `.[2]` ✅
   - Array/String Slice: `.[10:15]` ✅
   - Array/Object Value Iterator: `.[]` ✅
-  - `.[]?` ⚠️
+  - `.[]?` ✅
   - Comma: `,` ✅
   - Pipe: `|` ✅
   - Parenthesis: `()` ⚠️

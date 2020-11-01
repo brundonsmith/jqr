@@ -8,8 +8,7 @@ pub enum Filter<'a> {
     Identity,
     ObjectIdentifierIndex { identifier: &'a str, optional: bool },
     ArrayIndex { index: usize },
-    Slice { start: Option<usize>, end: Option<usize> },
-    AllValues,
+    Slice { start: Option<usize>, end: Option<usize>, optional: bool },
     Literal(JSONValue<'a>),
 
     // combinators
