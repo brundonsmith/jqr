@@ -442,6 +442,18 @@ fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter
         return Ok(Filter::Literal(JSONValue::String { s: *s, needs_escaping: false }));
     }
     
+    parenthesis(tokens, index)
+}
+
+fn parenthesis<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+
+    if try_eat(tokens, index, "(").is_ok() {
+        let exp = filter(tokens, index);
+        try_eat(tokens, index, ")")?;
+
+        return exp;
+    }
+
     return Err(ParseError {
         msg: String::from("Expected filter expression"),
         token: None,

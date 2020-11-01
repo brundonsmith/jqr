@@ -769,6 +769,11 @@ mod tests {
         assert!(res == None);
     }
 
+    #[test]
+    fn test_23() {
+        test_filter("23", "(. + 3) * 2", "52")
+    }
+
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
         let input = json_parser::parse(input_json, false).map(|r| r.unwrap());
         let filter = filter_parser::parse(filter).unwrap();

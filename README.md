@@ -21,6 +21,7 @@ Partial re-implementation of the `jq` command line utility in Rust
   - `--tab`
   - `--indent n`
   - `--color-output / -C` and `--monochrome-output / -M` ✅
+  - Whitespace-separated JSON values ✅
   - ...rest ⚠️
 
 - #### [Basic filters](https://stedolan.github.io/jq/manual/v1.6/#Basicfilters)
@@ -34,7 +35,7 @@ Partial re-implementation of the `jq` command line utility in Rust
   - `.[]?` ✅
   - Comma: `,` ✅
   - Pipe: `|` ✅
-  - Parenthesis: `()` ⚠️
+  - Parenthesis: `()` ✅
 
 - #### [Types and Values](https://stedolan.github.io/jq/manual/v1.6/#TypesandValues)
   - Array construction: `[]` ⚠️
