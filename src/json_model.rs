@@ -185,7 +185,7 @@ pub fn decoded_char_indices_iter<'a>(raw: &'a str) -> impl 'a + Iterator<Item=(u
                     index += 6;
                     Some((current_index, decode_unicode(&raw[current_index+2..current_index+6])))
                 } else {
-                    panic!()
+                    panic!("Encountered unexpected character escape \\{}", directive)
                 }
             } else {
                 index += 1;
@@ -195,8 +195,8 @@ pub fn decoded_char_indices_iter<'a>(raw: &'a str) -> impl 'a + Iterator<Item=(u
     })
 }
 
-const ESCAPE_DIRECTIVES: [char; 7] = ['\\', '"', 't', 'r', 'n', 'f', 'b'];
-const ESCAPE_CHAR_VALUES: [char; 7] = ['\\', '"', '\t', '\r', '\n', '\u{000c}', '\u{0008}'];
+const ESCAPE_DIRECTIVES: [char; 8] = ['\\', '"', 't', 'r', 'n', 'f', 'b', '/'];
+const ESCAPE_CHAR_VALUES: [char; 8] = ['\\', '"', '\t', '\r', '\n', '\u{000c}', '\u{0008}', '/'];
 
 macro_rules! compare_lex {
     ($iter_a:expr, $iter_b:expr) => {
@@ -516,7 +516,7 @@ pub fn create_indentation_string(
 
 #[cfg(test)]
 mod tests {
-    use super::{JSONValue, decoded_length, decoded_slice};
+    use super::{JSONValue, decoded_char_indices_iter, decoded_length, decoded_slice};
     use std::rc::Rc;
 
     #[test]
@@ -555,4 +555,8 @@ mod tests {
         assert_eq!(decoded_slice("a\\tbcd\\u1234e", Some(1), Some(3)), "\\tb")
     }
 
+    #[test]
+    fn test_7() {
+        assert_eq!(decoded_char_indices_iter("\\u1234\\u1234\\u1234").collect::<Vec<(usize, char)>>(), vec![ (0, '\u{1234}'), (6, '\u{1234}'), (12, '\u{1234}') ])
+    }
 }
