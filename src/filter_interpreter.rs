@@ -1,6 +1,6 @@
 use std::{collections::HashMap, cmp::Ordering, rc::Rc};
 
-use crate::json_model::{JSONValue, apply_escapes};
+use crate::json_model::{JSONValue, decoded_char_indices_iter, decoded_slice};
 use crate::filter_model::Filter;
 
 pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=JSONValue<'a>>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
@@ -58,12 +58,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                             }
                         } else if let JSONValue::String { s: string, needs_escaping } = val {
                             if needs_escaping {
-                                let string = apply_escapes(string);
-
-                                JSONValue::AllocatedString(Rc::new(
-                                    slice(&string, start, end)
-                                        .expect(&format!("Cannot get slice of {}", val))
-                                ))
+                                JSONValue::String { s: decoded_slice(&string, *start, *end), needs_escaping }
                             } else {
                                 JSONValue::AllocatedString(Rc::new(
                                     slice(&string, start, end)
@@ -131,7 +126,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     JSONValue::Array(x) => x.len(),
                     JSONValue::String { s, needs_escaping } => {
                         if needs_escaping {
-                            apply_escapes(s).chars().count() // TODO: Optimize by making non-allocating escaped length function?
+                            decoded_char_indices_iter(s).count()
                         } else {
                             s.chars().count()
                         }
@@ -516,7 +511,7 @@ fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         if let Some((b, bne)) = b.as_str() {
             return JSONValue::Array(Rc::new(
                 if bne {
-                    let b = apply_escapes(b);
+                    let b: String = decoded_char_indices_iter(b).map(|(_, c)| c).collect();
                     let b = b.as_str();
 
                     a.split(b)

@@ -388,16 +388,6 @@ mod parser_tests {
 
     #[test]
     fn test_9() {
-        assert_reversible("\"\\n \\t \\f \\u1234\"");
-    }
-
-    #[test]
-    fn test_10() {
-        assert_reversible("\"hello \\\\ \\\"world\\\"\"");
-    }
-
-    #[test]
-    fn test_11() {
         assert_reversible("{
   \"foo\": [
     1,
@@ -410,7 +400,7 @@ mod parser_tests {
     }
 
     #[test]
-    fn test_12() {
+    fn test_10() {
         assert_reversible("{
   \"id\": 809,
   \"name\": {

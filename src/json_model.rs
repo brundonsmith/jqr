@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash, cmp::Ordering, rc::Rc};
+use std::{ops::Deref, cmp::Ordering, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use crate::json_parser::object_entries;
 
@@ -52,10 +52,7 @@ impl<'a> Hash for JSONValue<'a> {
             // JSONValue::Object(x) => x.hash(state),
             JSONValue::Array(x) => x.hash(state),
             JSONValue::AllocatedString(x) => x.hash(state),
-            JSONValue::String {
-                s: x,
-                needs_escaping: _,
-            } => x.hash(state),
+            JSONValue::String { s: x, needs_escaping: _, } => x.hash(state),
             JSONValue::Integer(x) => x.hash(state),
             // JSONValue::Float(x) => x.hash(state),
             JSONValue::Bool(x) => x.hash(state),
@@ -77,22 +74,13 @@ impl<'a> PartialEq for JSONValue<'a> {
                 _ => false,
             },
             JSONValue::AllocatedString( x1) => match other {
-                JSONValue::String {
-                    s: x2,
-                    needs_escaping: _,
-                } => x1.as_ref().eq(x2),
+                JSONValue::String { s: _, needs_escaping: _ } => self.partial_cmp(other) == Some(Ordering::Equal),
                 JSONValue::AllocatedString(x2) => x1.eq(x2),
                 _ => false,
             },
-            JSONValue::String {
-                s: x1,
-                needs_escaping: y1,
-            } => match other {
-                JSONValue::String {
-                    s: x2,
-                    needs_escaping: y2,
-                } => x1.eq(x2) && y1 == y2,
-                JSONValue::AllocatedString(x2) => x1.eq(x2.as_ref()),
+            JSONValue::String { s: x1, needs_escaping: _ } => match other {
+                JSONValue::String { s: x2, needs_escaping: _ } => x1.eq(x2),
+                JSONValue::AllocatedString(_) => self.partial_cmp(other) == Some(Ordering::Equal),
                 _ => false,
             },
             JSONValue::Integer(x1) => match *other {
@@ -117,69 +105,30 @@ impl<'a> PartialEq for JSONValue<'a> {
 
 impl<'a> Eq for JSONValue<'a> {}
 
-pub fn apply_escapes<'a>(raw: &'a str) -> String {
-    let mut new_str = String::with_capacity(raw.len());
-    let new_str_ref = &mut new_str;
-    let mut escape_next = false;
-    let mut escape_to = 0;
-
-    raw.char_indices().for_each(move |(i, c)| {
-        if escape_to > i {
-            // do nothing
-        } else if !escape_next {
-            if c == '\\' {
-                escape_next = true;
-            } else {
-                new_str_ref.push(c);
-            }
-        } else {
-            if c == 'u' {
-                let decoded =
-                    std::char::from_u32(u32::from_str_radix(&raw[i + 1..i + 5], 16).unwrap())
-                        .unwrap();
-                new_str_ref.push(decoded);
-                escape_to = i + 5;
-            } else {
-                for (ie, e) in ESCAPE_DIRECTIVES.iter().enumerate() {
-                    if c == *e {
-                        new_str_ref.push(ESCAPE_CHAR_VALUES[ie]);
-                        break;
-                    }
-                }
-            }
-
-            escape_next = false;
-        }
-    });
-
-    new_str
+pub fn decoded_length(raw: &str) -> usize {
+    decoded_char_indices_iter(raw).count()
 }
 
-pub fn encode_escapes<'a>(raw: &'a str) -> String {
-    let mut new_str = String::with_capacity(raw.len());
-    let new_str_ref = &mut new_str;
+pub fn decoded_slice(raw: &str, start: Option<usize>, end: Option<usize>) -> &str {
+    let indices: Vec<usize> = decoded_char_indices_iter(raw).map(|(i, _)| i).collect();
 
-    raw.chars().for_each(move |c| {
-        for (ie, e) in ESCAPE_CHAR_VALUES.iter().enumerate() {
-            if c == *e {
-                new_str_ref.push('\\');
-                new_str_ref.push(ESCAPE_DIRECTIVES[ie]);
-                return;
-            }
+    if let Some(start) = start {
+        if let Some(end) = end {
+            &raw[indices[start]..indices[end]]
+        } else {
+            &raw[indices[start]..]
         }
-
-        if !c.is_ascii() {
-            new_str_ref.push('\\');
-            new_str_ref.push('u');
-            new_str_ref.push_str(&format_radix(c as u32, 16));
-            return;
+    } else {
+        if let Some(end) = end {
+            &raw[..indices[end]]
+        } else {
+            raw
         }
+    }
+}
 
-        // no escape found
-        new_str_ref.push(c);
-    });
-
-    new_str
+fn decode_unicode(digits: &str) -> char {
+    std::char::from_u32(u32::from_str_radix(digits, 16).unwrap()).unwrap()
 }
 
 fn format_radix(mut x: u32, radix: u32) -> String {
@@ -198,8 +147,68 @@ fn format_radix(mut x: u32, radix: u32) -> String {
     result.into_iter().rev().collect()
 }
 
+pub fn decoded_char_indices_iter<'a>(raw: &'a str) -> impl 'a + Iterator<Item=(usize, char)> {
+    let mut index = 0;
+
+    std::iter::from_fn(move || {
+        if index >= raw.len() {
+            None
+        } else {
+            let current_index = index;
+            let c = raw[index..index+1].chars().next().unwrap();
+
+            if c == '\\' {
+                let directive = raw[index+1..index+2].chars().next().unwrap();
+                if let Some((i, _)) = ESCAPE_DIRECTIVES.iter().enumerate().filter(|(_, c)| directive == **c).next() {
+                    index += 2;
+                    Some((current_index, ESCAPE_CHAR_VALUES[i]))
+                } else if directive == 'u' {
+                    index += 6;
+                    Some((current_index, decode_unicode(&raw[current_index+2..current_index+6])))
+                } else {
+                    panic!()
+                }
+            } else {
+                index += 1;
+                Some((current_index, c))
+            }
+        }
+    })
+}
+
 const ESCAPE_DIRECTIVES: [char; 7] = ['\\', '"', 't', 'r', 'n', 'f', 'b'];
 const ESCAPE_CHAR_VALUES: [char; 7] = ['\\', '"', '\t', '\r', '\n', '\u{000c}', '\u{0008}'];
+
+macro_rules! compare_lex {
+    ($iter_a:expr, $iter_b:expr) => {
+        {
+            let iter_a = $iter_a;
+            let mut iter_b = $iter_b;
+
+            for a in iter_a {
+                let b = iter_b.next();
+        
+                if let Some(b) = b {
+                    let ord = a.partial_cmp(&b).unwrap();
+            
+                    if ord != Ordering::Equal {
+                        return Some(ord);
+                    }
+                } else {
+                    // a is longer than b
+                    return Some(Ordering::Greater);
+                } 
+            }
+        
+            if iter_b.next().is_some() {
+                // b is longer than a
+               Some(Ordering::Less)
+            } else {
+                Some(Ordering::Equal)
+            }
+        }
+    };
+}
 
 impl<'a> PartialOrd for JSONValue<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -211,8 +220,30 @@ impl<'a> PartialOrd for JSONValue<'a> {
 
         if let Some((s, sne)) = self.as_str() {
             if let Some((other, one)) = other.as_str() {
-                // TODO: Handle escapes
-                return s.partial_cmp(other);
+                return 
+                    if sne {
+                        if one {
+                            compare_lex!(
+                                decoded_char_indices_iter(s).map(|(_, c)| c),
+                                decoded_char_indices_iter(other).map(|(_, c)| c)
+                            )
+                        } else {
+                            compare_lex!(
+                                decoded_char_indices_iter(s).map(|(_, c)| c),
+                                other.chars()
+                            )
+                        }
+                    } else {
+                        if one {
+                            compare_lex!(
+                                s.chars(), 
+                                decoded_char_indices_iter(other).map(|(_, c)| c)
+                            )
+                        } else {
+                            s.partial_cmp(other)
+                        }
+                    }
+                ;
             }
         }
 
@@ -224,15 +255,7 @@ impl<'a> PartialOrd for JSONValue<'a> {
 
         if let JSONValue::Array(s) = self {
             if let JSONValue::Array(other) = other {
-                for (a, b) in s.iter().zip(other.iter()) {
-                    let ord = a.partial_cmp(b).unwrap();
-
-                    if ord != Ordering::Equal {
-                        return Some(ord);
-                    }
-                }
-
-                return Some(Ordering::Equal);
+                return compare_lex!(s.iter(), other.iter());
             }
         }
 
@@ -278,10 +301,7 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
     match val {
         JSONValue::Object(_) => 6,
         JSONValue::Array(_) => 5,
-        JSONValue::String {
-            s: _,
-            needs_escaping: _,
-        } => 4,
+        JSONValue::String { s: _, needs_escaping: _, } => 4,
         JSONValue::AllocatedString(_) => 4,
         JSONValue::Integer(_) => 3,
         JSONValue::Float(_) => 3,
@@ -339,16 +359,7 @@ pub fn write_json<'a>(
                     buffer.push_str(BLUE);
                 }
 
-                buffer.push('\"');
-                match key {
-                    JSONValue::String {
-                        s,
-                        needs_escaping: _,
-                    } => buffer.push_str(s),
-                    JSONValue::AllocatedString(s) => buffer.push_str(&encode_escapes(s.as_str())),
-                    _ => unimplemented!(),
-                };
-                buffer.push('\"');
+                write_json(&key, 0, indentation_string, colored, buffer);
 
                 if colored {
                     buffer.push_str(WHITE);
@@ -403,16 +414,19 @@ pub fn write_json<'a>(
             );
             buffer.push(']');
         }
-        JSONValue::String {
-            s,
-            needs_escaping: _,
-        } => {
+        JSONValue::String { s, needs_escaping } => {
             if colored {
                 buffer.push_str(GREEN);
             }
 
             buffer.push('\"');
-            buffer.push_str(s);
+            
+            if *needs_escaping {
+                decoded_char_indices_iter(s).for_each(|(_, c)| buffer.push(c));
+            } else {
+                buffer.push_str(s);
+            }
+
             buffer.push('\"');
 
             if colored {
@@ -425,7 +439,7 @@ pub fn write_json<'a>(
             }
 
             buffer.push('\"');
-            buffer.push_str(&encode_escapes(s));
+            buffer.push_str(s);
             buffer.push('\"');
 
             if colored {
@@ -483,7 +497,7 @@ pub fn create_indentation_string(
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_escapes, encode_escapes, JSONValue};
+    use super::{JSONValue, decoded_length, decoded_slice};
     use std::rc::Rc;
 
     #[test]
@@ -499,22 +513,27 @@ mod tests {
 
     #[test]
     fn test_2() {
-        assert_eq!(
-            apply_escapes("\\n \\t \\f \\u1234"),
-            "\n \t \u{000c} \u{1234}"
-        )
+        assert_eq!(decoded_length("abcde"), 5)
     }
 
     #[test]
     fn test_3() {
-        assert_eq!(apply_escapes("\\u1234\\n\\t\\\\").chars().count(), 4)
+        assert_eq!(decoded_length("a\\tbcd\\u1234e"), 7)
     }
 
     #[test]
     fn test_4() {
-        assert_eq!(
-            encode_escapes("\n \t \u{000c} \u{1234}"),
-            "\\n \\t \\f \\u1234"
-        )
+        assert_eq!(decoded_slice("absde", Some(1), Some(3)), "bs")
     }
+
+    #[test]
+    fn test_5() {
+        assert_eq!(decoded_slice("a\\tbcd\\u1234e", Some(2), Some(6)), "bcd\\u1234")
+    }
+
+    #[test]
+    fn test_6() {
+        assert_eq!(decoded_slice("a\\tbcd\\u1234e", Some(1), Some(3)), "\\tb")
+    }
+
 }
