@@ -49,18 +49,37 @@ impl<'a> JSONValue<'a> {
 impl<'a> Hash for JSONValue<'a> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            // JSONValue::Object(x) => x.hash(state),
+            JSONValue::Object(x) => {
+                let mut keys: Vec<&JSONValue> = x.0.keys().collect();
+                keys.sort();
+
+                for key in keys {
+                    key.hash(state);
+                    x.0.get(key).hash(state);
+                }
+            },
             JSONValue::Array(x) => x.hash(state),
             JSONValue::AllocatedString(x) => x.hash(state),
-            JSONValue::String { s: x, needs_escaping: _, } => x.hash(state),
+            JSONValue::String { s, needs_escaping, } => {
+                if *needs_escaping {
+                    for (_, c) in decoded_char_indices_iter(s) {
+                        c.hash(state);
+                    }
+                } else {
+                    s.hash(state);
+                }
+            },
             JSONValue::Integer(x) => x.hash(state),
             // JSONValue::Float(x) => x.hash(state),
             JSONValue::Bool(x) => x.hash(state),
-            // JSONValue::Null => x.hash(state),
+            JSONValue::Null => NULL_HASH.hash(state),
             _ => unimplemented!(),
         }
     }
 }
+
+// HACK
+const NULL_HASH: Option<bool> = None;
 
 impl<'a> PartialEq for JSONValue<'a> {
     fn eq(&self, other: &Self) -> bool {
