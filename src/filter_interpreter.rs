@@ -190,9 +190,11 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
             }
         })),
         Filter::Has(key) => Box::new(values.map(move |val| {
-            if let Some((key, _)) = key.as_str() {
+            if let Some((key, needs_escaping)) = key.as_str() {
                 if let JSONValue::Object(contents) = val {
-                    return JSONValue::Bool(contents.as_ref().0.contains_key(&JSONValue::String { s: key, needs_escaping: false }));
+                    let key = JSONValue::String { s: key, needs_escaping };
+
+                    return JSONValue::Bool(contents.as_ref().0.contains_key(&key));
                 }
             }
             
@@ -624,8 +626,6 @@ fn or<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 
 #[cfg(test)]
 mod tests {
-
-    use std::rc::Rc;
     use crate::{filter_parser, json_parser};
     use super::apply_filter;
 
