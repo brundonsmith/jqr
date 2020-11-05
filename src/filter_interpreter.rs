@@ -232,6 +232,22 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 
             panic!("Cannot flatten {}", val);
         })),
+        Filter::Reverse => Box::new(values.map(move |val| {
+            match val {
+                JSONValue::Array(arr) => {
+                    let mut res = arr.as_ref().clone();
+
+                    let end = res.len() - 1;
+
+                    for i in 0..res.len() / 2 {
+                        res.swap(i, end - i);
+                    }
+
+                    JSONValue::Array(Rc::new(res))
+                },
+                _ => panic!("Cannot reverse {}", val),
+            }
+        })),
 
         // Filter::_PropertyChain(props) => Box::new(values.map(move |val| -> JSONValue {
         //     let mut next = val.as_ref();
@@ -935,6 +951,11 @@ mod tests {
             "\"foobarfoobarfoo\"",
             ". / \"bar\"",
             "[ \"foo\", \"foo\", \"foo\" ]")
+    }
+
+    #[test]
+    fn test_37() {
+        test_filter("[2, 4, 3, 9, 8, 7, 1]", "reverse", "[1, 7, 8, 9, 3, 4, 2]")
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {

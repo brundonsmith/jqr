@@ -288,6 +288,7 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
             "min" => Ok(Filter::Min),
             "max" => Ok(Filter::Max),
             "flatten" => Ok(Filter::Flatten),
+            "reverse" => Ok(Filter::Reverse),
             _ => {
                 try_eat(tokens, index, "(")?;
 

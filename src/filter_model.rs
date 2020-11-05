@@ -51,6 +51,7 @@ pub enum Filter<'a> {
     Min,
     Max,
     Flatten,
+    Reverse,
 
     // _MapSelect(Box<Filter<'a>>),
     // _PropertyChain(Vec<(&'a str, bool)>),
@@ -195,6 +196,7 @@ impl<'a> Display for Filter<'a> {
             Filter::Min => f.write_str("min"),
             Filter::Max => f.write_str("max"),
             Filter::Flatten => f.write_str("flatten"),
+            Filter::Reverse => f.write_str("reverse"),
         }
     }
 }
