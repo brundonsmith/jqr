@@ -7,13 +7,13 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
     match filter {
         Filter::Identity => Box::new(values),
         Filter::ObjectIdentifierIndex { identifier, optional } => 
-            Box::new(values.filter_map(move |val| {
+            Box::new(values.map(move |val| {
                 if let JSONValue::Object(contents) = val {
-                    Some(contents.as_ref().0.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone())
+                    contents.as_ref().0.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone()
                 } else if val == JSONValue::Null && *optional {
-                    None
+                    JSONValue::Null
                 } else {
-                    panic!(format!("Error: Object identifier index can only be used on values of type Object; got {}", val))
+                    panic!(format!("Error: Object identifier index can only be used on values of type Object; tried to get property {} of {}", identifier, val))
                 }
             })),
         Filter::ArrayIndex { index } => 
@@ -646,7 +646,7 @@ mod tests {
     use super::apply_filter;
 
     #[test]
-    fn test_1() {
+    fn property_access_1() {
         test_filter(
             "{ \"foo\": 12, \"bar\": \"hello\" }",
             ".foo",
@@ -655,7 +655,7 @@ mod tests {
     }
     
     #[test]
-    fn test_2() {
+    fn property_access_2() {
         test_filter(
             "{ 
                 \"foo\": 12, 
@@ -669,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn test_3() {
+    fn property_access_and_index_1() {
         test_filter(
             "{ 
                 \"foo\": 12, 
@@ -681,55 +681,7 @@ mod tests {
     }
     
     #[test]
-    fn test_4() {
-        test_filter(
-            "{ 
-                \"foo\": 12, 
-                \"bar\": [ 0, 1, 2 ]
-            }",
-            ".bar.[]",
-            "0 1 2"
-        );
-    }
-    
-    #[test]
-    fn test_5() {
-        test_filter(
-            "{ 
-                \"foo\": 12, 
-                \"bar\": [ 0, 1, 2 ]
-            }",
-            ".bar[1:]",
-            "[1, 2]"
-        );
-    }
-    
-    #[test]
-    fn test_6() {
-        test_filter(
-            "{ 
-                \"foo\": 12, 
-                \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
-            }",
-            ".bar[2:4]",
-            "[2, 3]"
-        );
-    }
-    
-    #[test]
-    fn test_7() {
-        test_filter(
-            "{ 
-                \"foo\": 12, 
-                \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
-            }",
-            ".bar[:4]",
-            "[0, 1, 2, 3]"
-        );
-    }
-    
-    #[test]
-    fn test_8() {
+    fn property_access_and_index_2() {
         test_filter(
             "{ 
                 \"foo\": 12, 
@@ -741,7 +693,69 @@ mod tests {
     }
 
     #[test]
-    fn test_9() {
+    fn property_access_and_elements() {
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2 ]
+            }",
+            ".bar.[]",
+            "0 1 2"
+        );
+    }
+    
+    #[test]
+    fn property_access_and_slice_1() {
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2 ]
+            }",
+            ".bar[1:]",
+            "[1, 2]"
+        );
+    }
+    
+    #[test]
+    fn property_access_and_slice_2() {
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
+            }",
+            ".bar[2:4]",
+            "[2, 3]"
+        );
+    }
+    
+    #[test]
+    fn property_access_and_slice_3() {
+        test_filter(
+            "{ 
+                \"foo\": 12, 
+                \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
+            }",
+            ".bar[:4]",
+            "[0, 1, 2, 3]"
+        );
+    }
+    
+    #[test]
+    fn property_access_and_math() {
+        test_filter(
+            "{
+                \"a\": { \"foo\": 12 },
+                \"b\": { \"bar\": 13 } 
+            }",
+            ".a + .b",
+            "{
+                \"foo\": 12,
+                \"bar\": 13
+            }")
+    }
+
+    #[test]
+    fn string_slice() {
         test_filter(
             "\"abcdefghi\"",
             ".[2:4]",
@@ -750,7 +764,7 @@ mod tests {
     }
 
     #[test]
-    fn test_10() {
+    fn map() {
         test_filter(
             "[
                 { \"foo\": 1 },
@@ -763,7 +777,7 @@ mod tests {
     }
 
     #[test]
-    fn test_11() {
+    fn math_1() {
         test_filter(
             "[1, 2, 3]",
             "map(.+1)",
@@ -772,7 +786,17 @@ mod tests {
     }
 
     #[test]
-    fn test_12() {
+    fn math_2() {
+        test_filter("3", ". + 5 * 2", "13")
+    }
+
+    #[test]
+    fn math_3() {
+        test_filter("5", "10 / . * 3", "6")
+    }
+
+    #[test]
+    fn string_addition() {
         test_filter(
             "[\"a\", \"b\", \"c\"]",
             "map(. + \"d\")",
@@ -781,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn test_13() {
+    fn keys() {
         test_filter(
             "{ 
                 \"foo\": 12, 
@@ -793,7 +817,7 @@ mod tests {
     }
 
     #[test]
-    fn test_14() {
+    fn string_slice_unicode() {
         test_filter(
             "\"\\u0001hello world\"", 
             ".[1:]", 
@@ -802,17 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn test_15() {
-        test_filter("3", ". + 5 * 2", "13")
-    }
-
-    #[test]
-    fn test_16() {
-        test_filter("5", "10 / . * 3", "6")
-    }
-
-    #[test]
-    fn test_17() {
+    fn multi_value_input() {
         test_filter(
             "
                 { \"foo\": 1 }
@@ -829,31 +843,17 @@ mod tests {
     }
 
     #[test]
-    fn test_18() {
-        test_filter(
-            "{
-                \"a\": { \"foo\": 12 },
-                \"b\": { \"bar\": 13 } 
-            }",
-            ".a + .b",
-            "{
-                \"foo\": 12,
-                \"bar\": 13
-            }")
-    }
-
-    #[test]
-    fn test_19() {
+    fn array_subtraction() {
         test_filter("[ 5, 6, 7, 8 ]", ". - .[2:]", "[ 5, 6 ]")
     }
 
     #[test]
-    fn test_20() {
+    fn string_multiplication() {
         test_filter("\"foo\"", "3 * .", "\"foofoofoo\"")
     }
 
     #[test]
-    fn test_21() {
+    fn alternative_operator() {
         test_filter(
             "[ null, 12, 0, \"\", false ]", 
             "map(. // \"ALTERNATIVE\")", 
@@ -861,7 +861,19 @@ mod tests {
     }
 
     #[test]
-    fn test_22() {
+    fn object_property_optional_operator() {
+        test_filter(
+            "
+            { \"foo\": null }
+            { \"foo\": {
+                \"bar\": 12
+            } }",
+            ".foo?.bar", 
+            "null 12" );
+    }
+
+    #[test]
+    fn slice_optional_operator() {
         let input = json_parser::parse("null", false).map(|r| r.unwrap());
         let filter = filter_parser::parse(".[]?").unwrap();
         println!("{:?}", filter);
@@ -872,57 +884,57 @@ mod tests {
     }
 
     #[test]
-    fn test_23() {
+    fn parenthesis() {
         test_filter("23", "(. + 3) * 2", "52")
     }
 
     #[test]
-    fn test_24() {
+    fn has_property_present() {
         test_filter("{ \"foo\": 12 }", "has(\"foo\")", "true")
     }
 
     #[test]
-    fn test_25() {
+    fn has_property_absent() {
         test_filter("{ \"foo\": 12 }", "has(\"bar\")", "false")
     }
 
     #[test]
-    fn test_26() {
+    fn has_array_present() {
         test_filter("[ 55, 44, 33 ]", "has(33)", "false")
     }
 
     #[test]
-    fn test_27() {
+    fn has_array_absent() {
         test_filter("[ 55, 44, 33 ]", "has(2)", "true")
     }
 
     #[test]
-    fn test_28() {
+    fn type_name() {
         test_filter("[ false, null, {}, [], 12 ]", "map(type)", "[ \"boolean\", \"null\", \"object\", \"array\", \"number\" ]")
     }
 
     #[test]
-    fn test_29() {
+    fn min_present() {
         test_filter("[ 5, 2, 9, 8, 3 ]", "min", "2")
     }
 
     #[test]
-    fn test_30() {
+    fn min_absent() {
         test_filter("[ ]", "min", "null")
     }
 
     #[test]
-    fn test_31() {
+    fn max_present() {
         test_filter("[ 5, 2, 9, 8, 3 ]", "max", "9")
     }
 
     #[test]
-    fn test_32() {
+    fn flatten() {
         test_filter("[1, [2], [[3], 4]]", "flatten", "[1, 2, 3, 4]")
     }
 
     #[test]
-    fn test_33() {
+    fn sort_arrays() {
         test_filter(
             "[[1, 2, 4], [1, 2, 3], [2, 3, 4]]",
             "sort",
@@ -930,7 +942,7 @@ mod tests {
     }
 
     #[test]
-    fn test_34() {
+    fn sort_objects() {
         test_filter(
             "[{\"foo\":4, \"bar\":10}, {\"foo\":3, \"bar\":100}, {\"foo\":2, \"bar\":1}]",
             "sort",
@@ -938,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn test_35() {
+    fn multiply_objects() {
         test_filter(
             "[ {\"k\": {\"a\": 1, \"b\": 2}}, {\"k\": {\"a\": 0,\"c\": 3}} ]",
             ".[0] * .[1]",
@@ -946,7 +958,7 @@ mod tests {
     }
 
     #[test]
-    fn test_36() {
+    fn divide_string() {
         test_filter(
             "\"foobarfoobarfoo\"",
             ". / \"bar\"",
@@ -954,7 +966,7 @@ mod tests {
     }
 
     #[test]
-    fn test_37() {
+    fn reverse() {
         test_filter("[2, 4, 3, 9, 8, 7, 1]", "reverse", "[1, 7, 8, 9, 3, 4, 2]")
     }
 

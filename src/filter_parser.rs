@@ -323,14 +323,26 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
 }
 
 fn identifier_chain<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-    if try_eat(tokens, index, ".").is_ok() {
-        if let Ok(first_identifier) = indexer(tokens, index) {
-            if tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("[")) || try_eat(tokens, index, ".").is_ok() {
-                if let Ok(second_identifier) = indexer(tokens, index) {
+    if try_eat(tokens, index, ".").is_ok() || tokens[*index].lexeme == FilterLexeme::Special("?") {
+        if let Ok(first_identifier) = indexer(tokens, index, false) {
+            if tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("[")) 
+                || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("."))
+                || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("?")) {
+                
+                let optional = try_eat(tokens, index, "?").is_ok();
+                try_eat(tokens, index, ".").ok();
+
+                if let Ok(second_identifier) = indexer(tokens, index, optional) {
                     let mut path = vec![ first_identifier, second_identifier ];
 
-                    while tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("[")) || try_eat(tokens, index, ".").is_ok() {
-                        if let Ok(next) = indexer(tokens, index) {
+                    while tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("[")) 
+                        || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special(".")) 
+                        || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("?")) {
+
+                        let optional = try_eat(tokens, index, "?").is_ok();
+                        try_eat(tokens, index, ".").ok();
+
+                        if let Ok(next) = indexer(tokens, index, optional) {
                             path.push(next);
                         } else {
                             return Err(ParseError {
@@ -353,13 +365,13 @@ fn identifier_chain<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     return json_literal(tokens, index);
 }
 
-fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, optional: bool) -> Result<Filter<'a>, ParseError<'a>> {
     if let Some(FilterLexeme::Identifier { s, quoted: _ }) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
 
         return Ok(Filter::ObjectIdentifierIndex { 
             identifier: s,
-            optional: try_eat(tokens, index, "?").is_ok()
+            optional
         });
     } else if try_eat(tokens, index, "[").is_ok() {
         let filter = match &tokens.get(*index).map(|t| &t.lexeme) {
@@ -368,7 +380,7 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>,
 
                 Ok(Filter::ObjectIdentifierIndex {
                     identifier: s,
-                    optional: try_eat(tokens, index, "?").is_ok()
+                    optional
                 })
             },
             Some(FilterLexeme::Number(start)) => {
@@ -387,7 +399,7 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>,
                     Ok(Filter::Slice {
                         start: Some(*start),
                         end,
-                        optional: try_eat(tokens, index, "?").is_ok(),
+                        optional
                     })
                 } else {
                     Ok(Filter::ArrayIndex { 
@@ -557,8 +569,8 @@ mod tests {
     #[test]
     fn test_4() {
         assert_eq!(parse(".foo?.bar.blah"), Ok(Filter::Pipe(vec![ 
-            Filter::ObjectIdentifierIndex { identifier: "foo", optional: true }, 
-            Filter::ObjectIdentifierIndex { identifier: "bar", optional: false }, 
+            Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
+            Filter::ObjectIdentifierIndex { identifier: "bar", optional: true }, 
             Filter::ObjectIdentifierIndex { identifier: "blah", optional: false }, 
         ])));
     }
