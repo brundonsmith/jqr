@@ -64,10 +64,9 @@ impl<R: Read> Iterator for CharQueue<R> {
     }
 }
 
-pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C) -> impl Iterator<Item=String> {
+pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool) -> impl Iterator<Item=String> {
 
-    std::iter::from_fn(move || {
-        let mut next_json_bytes: Vec<u8> = Vec::new();
+    if elide_root_array {
         let mut first_byte = bytes.next();
 
         // skip whitespace
@@ -75,7 +74,36 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C) -> impl Iterator<Item=
             first_byte = bytes.next();
         }
 
+        // skip open bracket
+        if first_byte == Some(b'[') {
+            bytes.next();
+        } else {
+            panic!("--elide-root-array was passed, but root value is not an array");
+        }
+    }
+
+    let skip_fn = if elide_root_array {
+        |b: u8| b.is_ascii_whitespace() || b == b','
+    } else {
+        |b: u8| b.is_ascii_whitespace()
+    };
+
+    std::iter::from_fn(move || {
+        let mut next_json_bytes: Vec<u8> = Vec::new();
+        let mut first_byte = bytes.next();
+
+        // skip whitespace
+        while first_byte.map(skip_fn).unwrap_or(false) {
+            println!("Skipped byte '{}'", std::str::from_utf8(&[ first_byte.unwrap() ]).unwrap());
+            first_byte = bytes.next();
+        }
+
         if let Some(first_byte) = first_byte {
+
+            if elide_root_array && first_byte == b']' {
+                bytes.next();
+                return None;
+            }
 
             next_json_bytes.push(first_byte);
 

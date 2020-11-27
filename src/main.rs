@@ -15,7 +15,7 @@ use std::{fs::File, io::Read, io::Write, time::Instant};
 use clap::ArgMatches;
 use filter_interpreter::apply_filter;//, apply_filter_hardcoded};
 use filter_model::Filter;
-use json_model::{create_indentation_string, write_json};
+use json_model::{JSONValue, create_indentation_string, write_json};
 use json_parser::ParseError;
 use json_string_stream::{CharQueue, delimit_values};
 use flate2::read::GzDecoder;
@@ -31,15 +31,11 @@ fn main() -> Result<(),String> {
             clap::Arg::with_name("PATTERN")
                 .help("The query pattern")
                 .required(true)
-                // .default_value(".")
         )
         .arg(
             clap::Arg::with_name("JSON")
                 .help("File name or inlined JSON string")
                 .required(false)
-//                 .default_value("[
-//   {
-//     \"id\": 1,")
         )
         .arg(
             clap::Arg::with_name("kind")
@@ -82,21 +78,55 @@ fn main() -> Result<(),String> {
         .arg(
             clap::Arg::with_name("stream")
                 .long("stream")
-                .help("Attempt to parse and process input in a streaming fashion. Whitespace-separated JSON values will be parsed and filtered (and their results printed) one at a time. NOTE: This can be considerably slower, but it will allow processing of very large JSON inputs that can't fit into memory.")
+                .help(&normalize_help_text(
+                    "Attempt to parse and process input in a streaming fashion. 
+                    Whitespace-separated JSON values will be parsed and filtered 
+                    (and their results printed) one at a time. NOTE: This can be 
+                    considerably slower, but it will allow processing of very 
+                    large JSON inputs that can't fit into memory."))
+                .required(false)
+                .takes_value(false)
+        )
+        .arg(
+            clap::Arg::with_name("elide-root-array")
+                .long("elide-root-array")
+                .short("era")
+                .help(&normalize_help_text(
+                    "If this flag is passed and your
+                    input JSON has at its root an array, the base array will
+                    be ignored and its contents treated as if they were 
+                    whitespace-separated values. This is useful when combined 
+                    with --stream, as it allows the values to be 
+                    processed one at a time, which is not otherwise possible for
+                    a single atomic root value (even with --stream enabled).
+                    
+                    This will produce the same output as adding \".[] |\" to the 
+                    beginning of your filter, and in fact this is how it's 
+                    implemented for the non-streaming case, but changing the
+                    filter does not afford the streaming benefits of passing the 
+                    flag."))
                 .required(false)
                 .takes_value(false)
         )
         .arg(
             clap::Arg::with_name("gzipped")
                 .long("gzipped")
-                .help("Set this flag to signal that the input file or stdin data is gzipped. The compressed data will be decompressed before processing (works with or without --stream).")
+                .help(&normalize_help_text(
+                    "Set this flag to signal that the input file or stdin data 
+                    is gzipped. The compressed data will be decompressed before 
+                    processing (works with or without --stream)."))
                 .required(false)
                 .takes_value(false)
         )
         .arg(
             clap::Arg::with_name("no-free")
                 .long("no-free")
-                .help("Direct the program to skip de-allocation of memory where possible, intentionally leaking objects (until the process ends) but saving time on system calls. In testing this tends to yield a 5%-10% performance improvement, at the expense of strictly-increasing memory usage.")
+                .help(&normalize_help_text(
+                    "Direct the program to skip de-allocation of memory where 
+                    possible, intentionally leaking objects (until the process 
+                    ends) but saving time on system calls. In testing this 
+                    tends to yield a 5%-10% performance improvement, at the 
+                    expense of strictly-increasing memory usage."))
                 .required(false)
                 .takes_value(false)
         )
@@ -120,6 +150,7 @@ struct Options<'a> {
     tab_indentation: bool,
     colored: bool,
     stream: bool,
+    elide_root_array: bool,
     gzipped: bool,
     no_free: bool,
 
@@ -140,6 +171,7 @@ impl<'a> Options<'a> {
             tab_indentation,
             colored: !matches.is_present("monochrome-output") && (matches.is_present("color-output") || atty::is(atty::Stream::Stdout)),
             stream: matches.is_present("stream"),
+            elide_root_array: matches.is_present("elide-root-array"),
             gzipped: matches.is_present("gzipped"),
             no_free: matches.is_present("no-free"),
 
@@ -195,7 +227,19 @@ fn do_regular(options: &Options) -> Result<(),String> {
         std::mem::forget(json_str);
     }
 
-    let filtered = apply_filter(&options.filter_parsed, json_parsed);
+    let filter: Filter = if options.elide_root_array {
+        if let Filter::Pipe(vec) = &options.filter_parsed {
+            let mut stages = vec.clone();
+            stages.insert(0, Filter::Slice { start: None, end: None, optional: false });
+            Filter::Pipe(stages)
+        } else {
+            Filter::Pipe(vec![ Filter::Slice { start: None, end: None, optional: false }, options.filter_parsed.clone() ])
+        }
+    } else {
+        options.filter_parsed.clone()
+    };
+
+    let filtered = apply_filter(&filter, json_parsed);
 
     let mut out = String::new();
     for val in filtered {
@@ -252,8 +296,7 @@ fn do_streaming(options: &Options) -> Result<(),String> {
 }
 
 fn filter_and_print<C: Iterator<Item=u8>>(bytes: C, options: &Options) -> Result<(),String> {
-
-    for json_str in delimit_values(bytes) {
+    for json_str in delimit_values(bytes, options.elide_root_array) {
         println!("{}", json_str);
 
         let json_parsed = json_parser::parse_one(&json_str, options.no_free)
@@ -293,4 +336,17 @@ fn create_parse_error_string(json_str: &str, e: ParseError) -> String {
     }
 
     format!("Error parsing JSON at {}:{} - {}", line, column, e.msg)
+}
+
+fn normalize_help_text(s: &str) -> String {
+    let mut first = true;
+    s.split_whitespace().fold(String::new(), |mut acc, word| {
+        if !first {
+            acc += " ";
+        } else {
+            first = false;
+        }
+
+        acc + word
+    })
 }
