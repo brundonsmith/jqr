@@ -18,6 +18,7 @@ use filter_model::Filter;
 use json_model::{create_indentation_string, write_json};
 use json_parser::ParseError;
 use json_string_stream::{CharQueue, delimit_values};
+use flate2::read::GzDecoder;
 
 
 fn main() -> Result<(),String> {
@@ -86,6 +87,13 @@ fn main() -> Result<(),String> {
                 .takes_value(false)
         )
         .arg(
+            clap::Arg::with_name("gzipped")
+                .long("gzipped")
+                .help("Set this flag to signal that the input file or stdin data is gzipped. The compressed data will be decompressed before processing (works with or without --stream).")
+                .required(false)
+                .takes_value(false)
+        )
+        .arg(
             clap::Arg::with_name("no-free")
                 .long("no-free")
                 .help("Direct the program to skip de-allocation of memory where possible, intentionally leaking objects (until the process ends) but saving time on system calls. In testing this tends to yield a 5%-10% performance improvement, at the expense of strictly-increasing memory usage.")
@@ -112,6 +120,7 @@ struct Options<'a> {
     tab_indentation: bool,
     colored: bool,
     stream: bool,
+    gzipped: bool,
     no_free: bool,
 
     indentation_string: String,
@@ -131,6 +140,7 @@ impl<'a> Options<'a> {
             tab_indentation,
             colored: !matches.is_present("monochrome-output") && (matches.is_present("color-output") || atty::is(atty::Stream::Stdout)),
             stream: matches.is_present("stream"),
+            gzipped: matches.is_present("gzipped"),
             no_free: matches.is_present("no-free"),
 
             indentation_string: create_indentation_string(indentation_step, tab_indentation),
@@ -147,7 +157,12 @@ fn do_regular(options: &Options) -> Result<(),String> {
         match options.kind {
             "file" => {
                 let mut file = File::open(json).map_err(|e| e.to_string())?;
-                file.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+
+                if options.gzipped {
+                    GzDecoder::new(file).read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+                } else {
+                    file.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+                }
     
                 json_buffer.as_str()
             },
@@ -158,7 +173,11 @@ fn do_regular(options: &Options) -> Result<(),String> {
         let stdin = std::io::stdin();
         let mut handle = stdin.lock();
 
-        handle.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+        if options.gzipped {
+            GzDecoder::new(handle).read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+        } else {
+            handle.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+        }
         
         json_buffer.as_str()
     };
@@ -200,13 +219,21 @@ fn do_streaming(options: &Options) -> Result<(),String> {
         match options.kind {
             "file" => {
                 let reader = File::open(json).map_err(|e| e.to_string())?;
-                
-                filter_and_print(CharQueue::new(reader), options.no_free, &options.filter_parsed, options.colored, &options.indentation_string)?;
+
+                if options.gzipped {
+                    filter_and_print(CharQueue::new(GzDecoder::new(reader)), options)?;
+                } else {
+                    filter_and_print(CharQueue::new(reader), options)?;
+                }
             },
             "inline" => {
                 let reader = json.as_bytes();
 
-                filter_and_print(CharQueue::new(reader), options.no_free, &options.filter_parsed, options.colored, &options.indentation_string)?;
+                if options.gzipped {
+                    filter_and_print(CharQueue::new(GzDecoder::new(reader)), options)?;
+                } else {
+                    filter_and_print(CharQueue::new(reader), options)?;
+                }
             },
             _ => unreachable!()
         }
@@ -214,32 +241,37 @@ fn do_streaming(options: &Options) -> Result<(),String> {
         let stdin = std::io::stdin();
         let reader = stdin.lock();
 
-        filter_and_print(CharQueue::new(reader), options.no_free, &options.filter_parsed, options.colored, &options.indentation_string)?;
+        if options.gzipped {
+            filter_and_print(CharQueue::new(GzDecoder::new(reader)), options)?;
+        } else {
+            filter_and_print(CharQueue::new(reader), options)?;
+        }
     };
 
     Ok(())
 }
 
-fn filter_and_print<C: Iterator<Item=u8>>(bytes: C, no_free: bool, filter_parsed: &Filter, colored: bool, indentation_string: &str) -> Result<(),String> {
+fn filter_and_print<C: Iterator<Item=u8>>(bytes: C, options: &Options) -> Result<(),String> {
 
     for json_str in delimit_values(bytes) {
+        println!("{}", json_str);
 
-        let json_parsed = json_parser::parse_one(&json_str, no_free)
+        let json_parsed = json_parser::parse_one(&json_str, options.no_free)
             .map_err(|e| create_parse_error_string(&json_str, e))?;
 
         let mut out = String::new();
-        for val in apply_filter(&filter_parsed, std::iter::once(json_parsed)) {
-            write_json(&val, 0, &indentation_string, colored, &mut out);
+        for val in apply_filter(&options.filter_parsed, std::iter::once(json_parsed)) {
+            write_json(&val, 0, &options.indentation_string, options.colored, &mut out);
             out.push('\n');
     
-            if no_free {
+            if options.no_free {
                 std::mem::forget(val);
             }
         }
 
         std::io::stdout().write_all(out.as_bytes()).map_err(|e| e.to_string())?;
 
-        if no_free {
+        if options.no_free {
             std::mem::forget(json_str);
         }
     }

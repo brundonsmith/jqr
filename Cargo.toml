@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 clap = "2.33.3"
 atty = "0.2.14"
+flate2 = "1.0.19"
 
 [profile.dev]
 opt-level=3
