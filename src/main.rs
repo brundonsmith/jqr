@@ -4,15 +4,20 @@ extern crate clap;
 extern crate atty;
 
 mod json_model;
+mod json_string_stream;
 mod json_parser;
 mod filter_model;
 mod filter_parser;
 mod filter_interpreter;
 
-use std::{fs::File, io::BufReader, io::Read, io::Write, rc::Rc, time::Instant};
+use std::{fs::File, io::Read, io::Write, time::Instant};
 
+use clap::ArgMatches;
 use filter_interpreter::apply_filter;//, apply_filter_hardcoded};
-use json_model::{JSONValue, create_indentation_string, write_json};
+use filter_model::Filter;
+use json_model::{create_indentation_string, write_json};
+use json_parser::ParseError;
+use json_string_stream::{CharQueue, delimit_values};
 
 
 fn main() -> Result<(),String> {
@@ -74,6 +79,13 @@ fn main() -> Result<(),String> {
                 .takes_value(false)
         )
         .arg(
+            clap::Arg::with_name("stream")
+                .long("stream")
+                .help("Attempt to parse and process input in a streaming fashion. Whitespace-separated JSON values will be parsed and filtered (and their results printed) one at a time. NOTE: This can be considerably slower, but it will allow processing of very large JSON inputs that can't fit into memory.")
+                .required(false)
+                .takes_value(false)
+        )
+        .arg(
             clap::Arg::with_name("no-free")
                 .long("no-free")
                 .help("Direct the program to skip de-allocation of memory where possible, intentionally leaking objects (until the process ends) but saving time on system calls. In testing this tends to yield a 5%-10% performance improvement, at the expense of strictly-increasing memory usage.")
@@ -81,23 +93,61 @@ fn main() -> Result<(),String> {
                 .takes_value(false)
         )
         .get_matches();
-    
-    let kind = matches.value_of("kind").unwrap();
-    let json = matches.value_of("JSON");
-    let pattern = matches.value_of("PATTERN").unwrap();
-    let indentation_step: u8 = matches.value_of("indent").unwrap().parse().unwrap();
-    let tab_indentation = matches.is_present("tab");
-    let colored = !matches.is_present("monochrome-output") && (matches.is_present("color-output") || atty::is(atty::Stream::Stdout));
-    let no_free = matches.is_present("no-free");
+
+    let options = Options::from(&matches);
+
+    if !options.stream {
+        do_regular(&options)?;
+    } else {
+        do_streaming(&options)?;
+    }
+
+    Ok(())
+}
+
+struct Options<'a> {
+    kind: &'a str,
+    json: Option<&'a str>,
+    indentation_step: u8,
+    tab_indentation: bool,
+    colored: bool,
+    stream: bool,
+    no_free: bool,
+
+    indentation_string: String,
+    filter_parsed: Filter<'a>,
+}
+
+impl<'a> Options<'a> {
+    pub fn from(matches: &'a ArgMatches) -> Self {
+        let pattern = matches.value_of("PATTERN").unwrap();
+        let indentation_step = matches.value_of("indent").unwrap().parse().unwrap();
+        let tab_indentation = matches.is_present("tab");
+
+        Options {
+            kind: matches.value_of("kind").unwrap(),
+            json: matches.value_of("JSON"),
+            indentation_step,
+            tab_indentation,
+            colored: !matches.is_present("monochrome-output") && (matches.is_present("color-output") || atty::is(atty::Stream::Stdout)),
+            stream: matches.is_present("stream"),
+            no_free: matches.is_present("no-free"),
+
+            indentation_string: create_indentation_string(indentation_step, tab_indentation),
+            filter_parsed: filter_parser::parse(pattern).map_err(|e| e.to_string()).unwrap_or_else(|e| panic!(e))
+        }
+    }
+}
+
+
+fn do_regular(options: &Options) -> Result<(),String> {
 
     let mut json_buffer = String::new();
-    let json_str = if let Some(json) = json {
-        match kind {
+    let json_str = if let Some(json) = options.json {
+        match options.kind {
             "file" => {
-                let mark = Instant::now();
                 let mut file = File::open(json).map_err(|e| e.to_string())?;
                 file.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
-                println!("File read took: {}ms", mark.elapsed().as_millis());
     
                 json_buffer.as_str()
             },
@@ -113,66 +163,102 @@ fn main() -> Result<(),String> {
         json_buffer.as_str()
     };
 
-    let json_parsed = json_parser::parse(json_str, no_free).map(|r| {
+    let json_parsed = json_parser::parse(json_str, options.no_free).map(|r| {
         match r {
             Ok(val) => val,
             Err(e) => {
-                let mut line = 1;
-                let mut column = 1;
-
-                for c in json_str.char_indices().take_while(|(i, _)| *i < e.index - 1).map(|(_, c)| c) {
-                    if c == '\n' {
-                        line += 1;
-                        column = 1;
-                    } else {
-                        column += 1;
-                    }
-                }
-
-                panic!("Error parsing JSON at {}:{} - {}", line, column, e.msg);
+                panic!(create_parse_error_string(json_str, e));
             }
         }
     });
 
-    if no_free {
+    if options.no_free {
         std::mem::forget(json_str);
     }
 
-    let filter_parsed = filter_parser::parse(pattern).map_err(|e| e.to_string())?;
+    let filtered = apply_filter(&options.filter_parsed, json_parsed);
 
-
-
-
-    // let mark = Instant::now();
-    // let json_parsed: Vec<JSONValue> = json_parsed.collect();
-    // println!("JSON parse took: {}ms", mark.elapsed().as_millis());
-
-    // let mark = Instant::now();
-    // let filtered: Vec<JSONValue> = apply_filter(&filter_parsed, json_parsed.into_iter()).collect();
-    // println!("Filtering took: {}ms", mark.elapsed().as_millis());
-
-
-
-    let filtered = apply_filter(&filter_parsed, json_parsed);
-
-
-
-    // let mark = Instant::now();
-    let indentation_string = create_indentation_string(indentation_step, tab_indentation);
     let mut out = String::new();
     for val in filtered {
-        write_json(&val, 0, &indentation_string, colored, &mut out);
+        write_json(&val, 0, &options.indentation_string, options.colored, &mut out);
         out.push('\n');
 
-        if no_free {
+        if options.no_free {
             std::mem::forget(val);
         }
     }
 
     std::io::stdout().write_all(out.as_bytes()).map_err(|e| e.to_string())?;
-    // println!("Writing out took: {}ms", mark.elapsed().as_millis());
 
     Ok(())
 }
 
 
+fn do_streaming(options: &Options) -> Result<(),String> {
+
+    if let Some(json) = options.json {
+        match options.kind {
+            "file" => {
+                let reader = File::open(json).map_err(|e| e.to_string())?;
+                
+                filter_and_print(CharQueue::new(reader), options.no_free, &options.filter_parsed, options.colored, &options.indentation_string)?;
+            },
+            "inline" => {
+                let reader = json.as_bytes();
+
+                filter_and_print(CharQueue::new(reader), options.no_free, &options.filter_parsed, options.colored, &options.indentation_string)?;
+            },
+            _ => unreachable!()
+        }
+    } else {
+        let stdin = std::io::stdin();
+        let reader = stdin.lock();
+
+        filter_and_print(CharQueue::new(reader), options.no_free, &options.filter_parsed, options.colored, &options.indentation_string)?;
+    };
+
+    Ok(())
+}
+
+fn filter_and_print<C: Iterator<Item=u8>>(bytes: C, no_free: bool, filter_parsed: &Filter, colored: bool, indentation_string: &str) -> Result<(),String> {
+
+    for json_str in delimit_values(bytes) {
+
+        let json_parsed = json_parser::parse_one(&json_str, no_free)
+            .map_err(|e| create_parse_error_string(&json_str, e))?;
+
+        let mut out = String::new();
+        for val in apply_filter(&filter_parsed, std::iter::once(json_parsed)) {
+            write_json(&val, 0, &indentation_string, colored, &mut out);
+            out.push('\n');
+    
+            if no_free {
+                std::mem::forget(val);
+            }
+        }
+
+        std::io::stdout().write_all(out.as_bytes()).map_err(|e| e.to_string())?;
+
+        if no_free {
+            std::mem::forget(json_str);
+        }
+    }
+
+    Ok(())
+}
+
+fn create_parse_error_string(json_str: &str, e: ParseError) -> String {
+    let mut line = 1;
+    let mut column = 1;
+
+    for c in json_str.char_indices().take_while(|(i, _)| *i < e.index - 1).map(|(_, c)| c) {
+        if c == '\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+
+    format!("Error parsing JSON at {}:{} - {}", line, column, e.msg)
+}

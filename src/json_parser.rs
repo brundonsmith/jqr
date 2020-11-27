@@ -1,6 +1,6 @@
 
-use std::{collections::HashMap, rc::Rc};
-use crate::json_model::JSONValue;
+use std::{collections::HashMap, rc::Rc, io::Read};
+use crate::{json_model::JSONValue, json_string_stream::{CharQueue, delimit_values}};
 
 #[derive(Debug,PartialEq)]
 pub struct ParseError {
@@ -28,6 +28,21 @@ pub fn parse<'a>(code: &'a str, no_free: bool) -> impl Iterator<Item=Result<JSON
         }
     })
 }
+
+pub fn parse_one<'a>(code: &'a str, no_free: bool) -> Result<JSONValue<'a>,ParseError> {
+    let mut index = 0;
+    expression(code, &mut index, no_free)
+}
+
+// pub fn parse_streaming<'a, R: Read>(reader: R, no_free: bool) -> impl Iterator<Item=Result<(String, JSONValue<'a>),ParseError>> {
+//     delimit_values(CharQueue::new(reader))
+//         .map(move |code| {
+//             let mut index = 0;
+
+//             expression(&code, &mut index, no_free)
+//                 .map(move |v| (code, v))
+//         })
+// }
 
 fn expression<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSONValue<'a>, ParseError> {
     consume_whitespace(code, index);
