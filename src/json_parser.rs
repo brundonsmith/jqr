@@ -227,19 +227,28 @@ fn string<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
 
 fn number<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
     let start = *index;
-    let front_end = *index + code[*index..].char_indices()
+    let mut front_end = *index + code[*index..].char_indices()
         .take_while(|(_, c)| c.is_numeric())
         .last()
         .map(|(index, ch)| index + ch.len_utf8())
         .unwrap_or(0);
 
-    if code[front_end..].chars().next() == Some('.') {
+    let exponent_length = _try_get_number_exponent_length(&code[front_end..]);
+
+    if exponent_length > 0 {
+        front_end += exponent_length;
+
+        *index = front_end;
+        return Ok(JSONValue::Float(code[start..front_end].parse().unwrap()))
+    } else if code[front_end..].chars().next() == Some('.') {
         let back_end_start = front_end + 1;
-        let back_end = back_end_start + code[back_end_start..].char_indices()
+        let mut back_end = back_end_start + code[back_end_start..].char_indices()
             .take_while(|(_, c)| c.is_numeric())
             .last()
             .map(|(index, ch)| index + ch.len_utf8())
             .unwrap_or(0);
+
+        back_end += _try_get_number_exponent_length(&code[back_end..]);
 
         *index = back_end;
         return Ok(JSONValue::Float(code[start..back_end].parse().unwrap()));
@@ -249,11 +258,31 @@ fn number<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
     }
 }
 
-fn try_eat<'a>(code: &'a str, index: &mut usize, expected: &char) -> Result<(), ParseError> {
+fn _try_get_number_exponent_length(code: &str) -> usize {
+    let bytes = code.as_bytes();
+    let mut length = 0;
+
+    if bytes.get(0) == Some(&b'e') {
+        length += 1;
+
+        if bytes.get(1) == Some(&b'+') || bytes.get(1) == Some(&b'-') {
+            length += 1;
+        }
+
+        length += bytes[length..].iter()
+            .take_while(|b| b.is_ascii_alphanumeric() && !b.is_ascii_alphabetic())
+            .count();
+    }
+
+
+    length
+}
+
+fn try_eat<'a>(code: &'a str, index: &mut usize, expected: &char) -> Result<char, ParseError> {
     consume_whitespace(code, index);
     if Some(*expected) == code[*index..].chars().next() {
         *index += expected.len_utf8();
-        Ok(())
+        Ok(*expected)
     } else {
         return Err(ParseError { 
             msg: format!("Expected '{}'", expected), 
@@ -436,6 +465,19 @@ mod parser_tests {
     \"Speed\": 34
   }
 }")
+    }
+
+    #[test]
+    fn test_11() {
+        let mut hash_map = HashMap::new();
+        hash_map.insert(JSONValue::String { s: "foo", needs_escaping: false }, JSONValue::Float(0.00001));
+
+        assert_eq!(
+            parse("{ \"foo\": 1e-5 }", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![
+                Ok(JSONValue::Object(Rc::new((hash_map, Some("{ \"foo\": 1e-5 }")))))
+            ]
+        )
     }
 
     fn assert_reversible(json: &str) {
