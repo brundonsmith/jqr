@@ -1,6 +1,44 @@
 ![Rust](https://github.com/brundonsmith/jqr/workflows/Rust/badge.svg)
 
-Partial re-implementation of the `jq` command line utility in Rust
+Partial re-implementation of the `jq` command line utility in Rust. The 
+supported features can generally be described as "the things most people use, 
+without the hyper-complicated or the hyper-niche". Details can be found below.
+
+`jqr` is notably faster than `jq` in all tested cases. It also comes with a 
+couple extra features, including (at time of writing) automatic streaming 
+(enabled by a flag, but no special syntax required) of whitespace-delimited 
+input values, and streamed decompression of gzipped input data (also enabled by 
+a flag).
+
+```
+USAGE:
+    jqr [FLAGS] [OPTIONS] <PATTERN> [JSON]
+
+FLAGS:
+    -C, --color-output         Force colored output
+        --gzipped              Set this flag to signal that the input file or stdin data is gzipped. The compressed data
+                               will be decompressed before processing (works with or without --stream).
+    -h, --help                 Prints help information
+    -M, --monochrome-output    Force monochrome output
+        --no-free              Direct the program to skip de-allocation of memory where possible, intentionally leaking
+                               objects (until the process ends) but saving time on system calls. In testing this tends
+                               to yield a 5%-10% performance improvement, at the expense of strictly-increasing memory
+                               usage.
+        --stream               Attempt to parse and process input in a streaming fashion. Whitespace-separated JSON
+                               values will be parsed and filtered (and their results printed) one at a time. NOTE: This
+                               can be considerably slower, but it will allow processing of very large JSON inputs that
+                               can't fit into memory.
+        --tab                  Indent with tabs instead of spaces (--indent value is ignored)
+    -V, --version              Prints version information
+
+OPTIONS:
+        --indent <indent>    Number of spaces to indent by [default: 2]
+        --kind <kind>        Type of input [default: file]  [possible values: file, inline]
+
+ARGS:
+    <PATTERN>    The query pattern
+    <JSON>       File name or inlined JSON string
+```
 
 
 ## Currently supported feature set:
