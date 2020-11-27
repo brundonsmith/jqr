@@ -110,10 +110,10 @@ ARGS:
   - `//` ✅
   - `break` 🔴
 
-#### [Regular expressions (PCRE)](https://stedolan.github.io/jq/manual/v1.6/#RegularexpressionsPCRE) ⚠️
+#### [Regular expressions (PCRE)](https://stedolan.github.io/jq/manual/v1.6/#RegularexpressionsPCRE) 🔴
 
-#### [Advanced features](https://stedolan.github.io/jq/manual/v1.6/#Advancedfeatures) ⚠️
+#### [Advanced features](https://stedolan.github.io/jq/manual/v1.6/#Advancedfeatures) 🔴
 
-#### [Assignment](https://stedolan.github.io/jq/manual/v1.6/#Assignment) ⚠️
+#### [Assignment](https://stedolan.github.io/jq/manual/v1.6/#Assignment) 🔴
 
-#### [Modules](https://stedolan.github.io/jq/manual/v1.6/#Modules) ⚠️
+#### [Modules](https://stedolan.github.io/jq/manual/v1.6/#Modules) 🔴
