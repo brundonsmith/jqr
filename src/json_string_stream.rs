@@ -114,15 +114,17 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                     while let Some(byte) = bytes.next() {
                         next_json_bytes.push(byte);
 
-                        if byte == b'}' {
+                        if byte == b'"' {
+                            traverse_and_push_string(&mut bytes, &mut next_json_bytes).ok();
+                        } else if byte == b'}' {
                             bracket_depth -= 1;
-                        } else if byte == b'{' {
-                            bracket_depth += 1;
-                        }
                         
                         if bracket_depth == 0 {
                             return Some(String::from_utf8(next_json_bytes).unwrap());
                         }
+                        } else if byte == b'{' {
+                            bracket_depth += 1;
+                    }
                     }
 
                     return None;
@@ -133,37 +135,24 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                     while let Some(byte) = bytes.next() {
                         next_json_bytes.push(byte);
 
-                        if byte == b']' {
+                        if byte == b'"' {
+                            traverse_and_push_string(&mut bytes, &mut next_json_bytes).ok();
+                        } else if byte == b']' {
                             bracket_depth -= 1;
-                        } else if byte == b'[' {
-                            bracket_depth += 1;
-                        }
                         
                         if bracket_depth == 0 {
                             return Some(String::from_utf8(next_json_bytes).unwrap());
+                        }
+                        } else if byte == b'[' {
+                            bracket_depth += 1;
                         }
                     }
 
                     return None;
                 },
                 b'"' => { // string
-                    let mut escape_count = 0;
-
-                    while let Some(byte) = bytes.next() {
-                        next_json_bytes.push(byte);
-
-                        if byte == b'"' && escape_count % 2 == 1 {
-                            return Some(String::from_utf8(next_json_bytes).unwrap());
-                        }
-
-                        if byte == b'\\' {
-                            escape_count += 1;
-                        } else {
-                            escape_count = 0;
-                        }
-                    }
-
-                    return None;
+                    return traverse_and_push_string(&mut bytes, &mut next_json_bytes)
+                        .ok().map(|_| String::from_utf8(next_json_bytes).unwrap());
                 },
                 _ => { // number, boolean, or null
                     while let Some(byte) = bytes.next() {
@@ -181,4 +170,24 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
             return None;
         }
     })
+}
+
+fn traverse_and_push_string<C: Iterator<Item=u8>>(bytes: &mut C, result_bytes: &mut Vec<u8>) -> Result<(),()> {
+    let mut escape_count = 0;
+
+    while let Some(byte) = bytes.next() {
+        result_bytes.push(byte);
+
+        if byte == b'"' && escape_count % 2 == 0 {
+            return Ok(());
+        }
+
+        if byte == b'\\' {
+            escape_count += 1;
+        } else {
+            escape_count = 0;
+        }
+    }
+
+    Err(())
 }
