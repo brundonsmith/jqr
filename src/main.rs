@@ -326,7 +326,7 @@ fn create_parse_error_string(json_str: &str, e: ParseError) -> String {
     let mut line = 1;
     let mut column = 1;
 
-    for c in json_str.char_indices().take_while(|(i, _)| *i < e.index - 1).map(|(_, c)| c) {
+    for c in json_str.char_indices().take_while(|(i, _)| *i + 1 < e.index).map(|(_, c)| c) {
         if c == '\n' {
             line += 1;
             column = 1;
@@ -335,7 +335,8 @@ fn create_parse_error_string(json_str: &str, e: ParseError) -> String {
         }
     }
 
-    format!("Error parsing JSON at {}:{} - {}", line, column, e.msg)
+    let preview_end = usize::min(e.index+30, json_str.len());
+    format!("Error parsing JSON at {}:{} - {}\nNear here:\n{}", line, column, e.msg, &json_str[e.index..preview_end])
 }
 
 fn normalize_help_text(s: &str) -> String {
