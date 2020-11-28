@@ -4,11 +4,29 @@ Partial re-implementation of the `jq` command line utility in Rust. The
 supported features can generally be described as "the things most people use, 
 without the hyper-complicated or the hyper-niche". Details can be found below.
 
-`jqr` is notably faster than `jq` in all tested cases. It also comes with a 
-couple extra features, including (at time of writing) automatic streaming 
-(enabled by a flag, but no special syntax required) of whitespace-delimited 
-input values, and streamed decompression of gzipped input data (also enabled by 
-a flag).
+`jqr` is significantly faster than `jq` in all non-streaming cases that have 
+been tested.
+
+## Streaming
+`jq`'s streaming syntax is notoriously inscrutable, but some kind of streaming 
+support is necessary when you want to process more JSON than can fit in memory 
+at one time.
+
+To this end, `jqr` implements a much more intuitive (if possibly less 
+performant) form of streaming. There is no special syntax: you use regular 
+filter expressions the regular way (and enable with `--stream`). The only 
+stipulations are that, to take advantage of streaming, the root of your JSON 
+must either be:
+
+1) Whitespace-separated values. If streaming is enabled, each value will be 
+parsed and processed one at a time.
+
+2) A single array. For this case, to process as a stream, you must also pass 
+the `--elide-root-array` flag. This will instruct the parser to ignore the root
+array and treat its values **as if they were whitespace-separated values**. Note
+that this will change the filter output slightly: it's equivalent to prepending
+`.[] | ` at the beginning of your filter expression.
+
 
 ```
 USAGE:
@@ -16,6 +34,13 @@ USAGE:
 
 FLAGS:
     -C, --color-output         Force colored output
+    -e, --elide-root-array     If this flag is passed and your input JSON has at its root an array, the base array will
+                               be ignored and its contents treated as if they were whitespace-separated values. This is
+                               useful when combined with --stream, as it allows the values to be processed one at a
+                               time, which is not otherwise possible for a single atomic root value (even with --stream
+                               enabled). This will produce the same output as adding ".[] |" to the beginning of your
+                               filter, and in fact this is how it's implemented for the non-streaming case, but changing
+                               the filter does not afford the streaming benefits of passing the flag.
         --gzipped              Set this flag to signal that the input file or stdin data is gzipped. The compressed data
                                will be decompressed before processing (works with or without --stream).
     -h, --help                 Prints help information
