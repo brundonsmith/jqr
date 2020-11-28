@@ -5,6 +5,7 @@ pub struct CharQueue<R: Read> {
     reader: R,
     deque: VecDeque<u8>,
     eof: bool,
+    buf: [u8;1024],
 }
 
 impl<R: Read> CharQueue<R> {
@@ -14,14 +15,14 @@ impl<R: Read> CharQueue<R> {
             reader,
             deque: VecDeque::new(),
             eof: false,
+            buf: [0;1024],
         }
     }
 
     fn add_to_queue(&mut self) {
         if !self.eof {
-            let mut buf: [u8;128] = [0;128];
             loop {
-                let bytes_read = self.reader.read(&mut buf);
+                let bytes_read = self.reader.read(&mut self.buf);
     
                 if let Ok(bytes_read) = bytes_read {
                     if bytes_read == 0 {
@@ -30,7 +31,7 @@ impl<R: Read> CharQueue<R> {
     
                     self.deque.reserve_exact(bytes_read);
                     for i in 0..bytes_read {
-                        self.deque.push_back(buf[i]);
+                        self.deque.push_back(self.buf[i]);
                     }
     
                     break;
@@ -94,7 +95,6 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
 
         // skip whitespace
         while first_byte.map(skip_fn).unwrap_or(false) {
-            println!("Skipped byte '{}'", std::str::from_utf8(&[ first_byte.unwrap() ]).unwrap());
             first_byte = bytes.next();
         }
 
@@ -118,13 +118,13 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                             traverse_and_push_string(&mut bytes, &mut next_json_bytes).ok();
                         } else if byte == b'}' {
                             bracket_depth -= 1;
-                        
-                        if bracket_depth == 0 {
+
+                            if bracket_depth == 0 {
                                 return Some(next_json_bytes);
-                        }
+                            }
                         } else if byte == b'{' {
                             bracket_depth += 1;
-                    }
+                        }
                     }
 
                     return None;
@@ -139,10 +139,10 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                             traverse_and_push_string(&mut bytes, &mut next_json_bytes).ok();
                         } else if byte == b']' {
                             bracket_depth -= 1;
-                        
-                        if bracket_depth == 0 {
+
+                            if bracket_depth == 0 {
                                 return Some(next_json_bytes);
-                        }
+                            }
                         } else if byte == b'[' {
                             bracket_depth += 1;
                         }
@@ -166,7 +166,7 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                     return None;
                 }
             }
-        } else {
+        } else {        
             return None;
         }
     })
