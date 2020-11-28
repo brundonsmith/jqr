@@ -1,16 +1,12 @@
 
 use std::{hash::BuildHasherDefault, collections::HashMap, rc::Rc};
-use crate::{json_model::JSONValue};
+use crate::{json_model::{FALSE, JSONValue, NULL, TRUE}};
 
 #[derive(Debug,PartialEq)]
 pub struct ParseError {
     pub msg: String,
     pub index: usize,
 }
-
-const TRUE_TOKEN: &[u8] = b"true";
-const FALSE_TOKEN: &[u8] = b"false";
-const NULL_TOKEN: &[u8] = b"null";
 
 
 // parsing
@@ -46,11 +42,11 @@ fn expression<'a>(code: &'a [u8], index: &mut usize, no_free: bool) -> Result<JS
         array(code, index, no_free)
     } else if ch.map(|c| c.is_ascii_digit() || c == b'-').unwrap_or(false) {
         number(code, index)
-    } else if try_match_front(code, index, TRUE_TOKEN) {
+    } else if try_match_front(code, index, &TRUE) {
         Ok(JSONValue::Bool(true))
-    } else if try_match_front(code, index, FALSE_TOKEN) {
+    } else if try_match_front(code, index, &FALSE) {
         Ok(JSONValue::Bool(false))
-    } else if try_match_front(code, index, NULL_TOKEN) {
+    } else if try_match_front(code, index, &NULL) {
         Ok(JSONValue::Null)
     } else {
         Err(ParseError {

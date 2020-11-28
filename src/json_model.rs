@@ -1,10 +1,14 @@
-use std::{cmp::Ordering, fmt::Display, hash::Hash, rc::Rc};
+use std::{cmp::Ordering, fmt::{Debug, Display}, hash::Hash, rc::Rc};
 
 use fxhash::FxHashMap;
 
 use crate::json_parser::object_entries;
 
-#[derive(Debug, Clone)]
+pub const NULL: [u8;4] = [ b'n', b'u', b'l', b'l' ];
+pub const TRUE: [u8;4] = [ b't', b'r', b'u', b'e' ];
+pub const FALSE: [u8;5] = [ b'f', b'a', b'l', b's', b'e' ];
+
+#[derive(Clone)]
 pub enum JSONValue<'a> {
     Object(Rc<(FxHashMap<JSONValue<'a>, JSONValue<'a>>, Option<&'a [u8]>)>),
     Array(Rc<Vec<JSONValue<'a>>>),
@@ -377,6 +381,50 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
     }
 }
 
+impl<'a> Debug for JSONValue<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JSONValue::Object(x) => {
+                f.write_str("Object([")?;
+                for (key, value) in x.0.iter() {
+                    f.write_str(&format!("({:?}, {:?}), ", key, value))?;
+                }
+                f.write_str("])")?;
+            }
+            JSONValue::Array(x) => {
+                f.write_str("Array([")?;
+                for value in x.iter() {
+                    f.write_str(&format!("{:?}, ", value))?;
+                }
+                f.write_str("])")?;
+            }
+            JSONValue::AllocatedString(x) => {
+                f.write_str(&format!("AllocatedString(\"{}\")", x))?;
+            }
+            JSONValue::String { s, needs_escaping } => {
+                f.write_str(&format!("String {{ s: \"{}\", needs_escaping: {} }}", std::str::from_utf8(s).unwrap(), needs_escaping))?;
+            }
+            JSONValue::Number(x) => {
+                f.write_str(&format!("Number(\"{}\")", std::str::from_utf8(x).unwrap()))?;
+            }
+            JSONValue::Integer(x) => {
+                f.write_str(&format!("Integer({})", x))?;
+            }
+            JSONValue::Float(x) => {
+                f.write_str(&format!("Float({})", x))?;
+            }
+            JSONValue::Bool(x) => {
+                f.write_str(&format!("Bool({})", x))?;
+            }
+            JSONValue::Null => {
+                f.write_str("Null")?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl<'a> Display for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buffer = Vec::new();
@@ -520,15 +568,15 @@ pub fn write_json<'a>(
         JSONValue::Integer(n) => buffer.extend_from_slice(&n.to_string().as_bytes()),
         JSONValue::Float(n) => buffer.extend_from_slice(&n.to_string().as_bytes()),
         JSONValue::Bool(b) => buffer.extend_from_slice(match b {
-            true => "true".as_bytes(),
-            false => "false".as_bytes(),
+            true => &TRUE,
+            false => &FALSE,
         }),
         JSONValue::Null => {
             if colored {
                 buffer.extend_from_slice(BLACK);
             }
 
-            buffer.extend_from_slice("null".as_bytes());
+            buffer.extend_from_slice(&NULL);
 
             if colored {
                 buffer.extend_from_slice(WHITE);
