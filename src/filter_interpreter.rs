@@ -488,7 +488,7 @@ fn merge_objects_recursive<'a: 'b, 'b>(a: &'b HashMap<JSONValue<'a>,JSONValue<'a
     }
 
     for (key, value) in b.iter() {
-        if let Some(JSONValue::Object(contents_a)) = result_map.get(key) {
+        if let Some(JSONValue::Object(contents_a)) = result_map.get(key).cloned() {
             if let JSONValue::Object(contents_b) = value {
                 result_map.insert(key.clone(), merge_objects_recursive(&contents_a.as_ref().0, &contents_b.as_ref().0));
                 continue;
