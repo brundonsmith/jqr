@@ -1,4 +1,6 @@
-use std::{collections::HashMap, cmp::Ordering, rc::Rc};
+use std::{hash::BuildHasherDefault, cmp::Ordering, collections::HashMap, rc::Rc};
+
+use fxhash::FxHashMap;
 
 use crate::json_model::{JSONValue, decoded_char_indices_iter, decoded_slice};
 use crate::filter_model::Filter;
@@ -223,7 +225,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         })),
         Filter::Flatten => Box::new(values.map(|val| {
             if let JSONValue::Array(contents) = val {
-                let mut res = Vec::new();
+                let mut res = Vec::with_capacity(contents.len());
 
                 flatten_recursive(contents.as_ref(), &mut res);
 
@@ -480,8 +482,8 @@ fn repeated_str<'a, 'b>(s: &'a str, n: i64) -> JSONValue<'b> {
     }
 }
 
-fn merge_objects_recursive<'a: 'b, 'b>(a: &'b HashMap<JSONValue<'a>,JSONValue<'a>>, b: &'b HashMap<JSONValue<'a>, JSONValue<'a>>) -> JSONValue<'a> {
-    let mut result_map = HashMap::new();
+fn merge_objects_recursive<'a: 'b, 'b>(a: &'b FxHashMap<JSONValue<'a>,JSONValue<'a>>, b: &'b FxHashMap<JSONValue<'a>, JSONValue<'a>>) -> JSONValue<'a> {
+    let mut result_map = HashMap::with_hasher(BuildHasherDefault::default());
 
     for (key, value) in a.iter() {
         result_map.insert(key.clone(), value.clone());

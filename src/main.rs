@@ -2,6 +2,7 @@
 
 extern crate clap;
 extern crate atty;
+extern crate fxhash;
 
 mod json_model;
 mod json_string_stream;
@@ -10,12 +11,12 @@ mod filter_model;
 mod filter_parser;
 mod filter_interpreter;
 
-use std::{fs::File, io::Read, io::Write, time::Instant};
+use std::{fs::File, io::Read, io::Write};
 
 use clap::ArgMatches;
 use filter_interpreter::apply_filter;//, apply_filter_hardcoded};
 use filter_model::Filter;
-use json_model::{JSONValue, create_indentation_string, write_json};
+use json_model::{create_indentation_string, write_json};
 use json_parser::ParseError;
 use json_string_stream::{CharQueue, delimit_values};
 use flate2::read::MultiGzDecoder;

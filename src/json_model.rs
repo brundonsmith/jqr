@@ -1,10 +1,12 @@
-use std::{cmp::Ordering, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
+use std::{cmp::Ordering, fmt::Display, hash::Hash, rc::Rc};
+
+use fxhash::FxHashMap;
 
 use crate::json_parser::object_entries;
 
 #[derive(Debug, Clone)]
 pub enum JSONValue<'a> {
-    Object(Rc<(HashMap<JSONValue<'a>, JSONValue<'a>>, Option<&'a [u8]>)>),
+    Object(Rc<(FxHashMap<JSONValue<'a>, JSONValue<'a>>, Option<&'a [u8]>)>),
     Array(Rc<Vec<JSONValue<'a>>>),
     AllocatedString(Rc<String>),
     String { s: &'a [u8], needs_escaping: bool },

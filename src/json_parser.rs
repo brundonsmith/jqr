@@ -1,5 +1,5 @@
 
-use std::{collections::HashMap, rc::Rc};
+use std::{hash::BuildHasherDefault, collections::HashMap, rc::Rc};
 use crate::{json_model::JSONValue};
 
 #[derive(Debug,PartialEq)]
@@ -65,7 +65,7 @@ fn object<'a>(code: &'a [u8], index: &mut usize, no_free: bool) -> Result<JSONVa
 
     try_eat(code, index, b'{')?;
 
-    let mut contents = HashMap::new();
+    let mut contents = HashMap::with_hasher(BuildHasherDefault::default());
 
     if try_eat(code, index, b'}').is_ok() {
         return Ok(JSONValue::Object(Rc::new((contents, Some(&code[str_start..*index])))));
@@ -307,7 +307,7 @@ fn consume_whitespace<'a>(code: &'a [u8], index: &mut usize) {
 
 #[cfg(test)]
 mod parser_tests {
-    use std::{collections::HashMap, rc::Rc};
+    use std::{hash::BuildHasherDefault, collections::HashMap, rc::Rc};
     use crate::json_model::{JSONValue};
     use crate::json_parser::{ParseError, parse};
 
@@ -321,7 +321,7 @@ mod parser_tests {
 
     #[test]
     fn test_2() {
-        let mut target_hashmap = HashMap::new();
+        let mut target_hashmap = HashMap::with_hasher(BuildHasherDefault::default());
         target_hashmap.insert(JSONValue::String { s: b"foo", needs_escaping: false }, JSONValue::Array(Rc::new(vec![
             JSONValue::Integer(1),
             JSONValue::Float(2.3),
@@ -350,13 +350,13 @@ mod parser_tests {
 
     #[test]
     fn test_3() {
-        let mut map_1 = HashMap::new();
+        let mut map_1 = HashMap::with_hasher(BuildHasherDefault::default());
         map_1.insert(JSONValue::String { s: b"foo", needs_escaping: false }, JSONValue::Integer(1));
         
-        let mut map_2 = HashMap::new();
+        let mut map_2 = HashMap::with_hasher(BuildHasherDefault::default());
         map_2.insert(JSONValue::String { s: b"foo", needs_escaping: false }, JSONValue::Integer(2));
         
-        let mut map_3 = HashMap::new();
+        let mut map_3 = HashMap::with_hasher(BuildHasherDefault::default());
         map_3.insert(JSONValue::String { s: b"foo", needs_escaping: false }, JSONValue::Integer(3));
 
         assert_eq!(
@@ -407,7 +407,7 @@ mod parser_tests {
         assert_eq!(
             parse(b"{}", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
-                Ok(JSONValue::Object(Rc::new((HashMap::new(), Some(b"{}")))))
+                Ok(JSONValue::Object(Rc::new((HashMap::with_hasher(BuildHasherDefault::default()), Some(b"{}")))))
             ]
         )
     }
@@ -461,7 +461,7 @@ mod parser_tests {
 
     #[test]
     fn test_11() {
-        let mut hash_map = HashMap::new();
+        let mut hash_map = HashMap::with_hasher(BuildHasherDefault::default());
         hash_map.insert(JSONValue::String { s: b"foo", needs_escaping: false }, JSONValue::Float(0.00001));
 
         assert_eq!(
@@ -474,7 +474,7 @@ mod parser_tests {
 
     #[test]
     fn test_12() {
-        let mut hash_map = HashMap::new();
+        let mut hash_map = HashMap::with_hasher(BuildHasherDefault::default());
         hash_map.insert(JSONValue::String { s: b"foo", needs_escaping: false }, JSONValue::Integer(-12));
 
         assert_eq!(
