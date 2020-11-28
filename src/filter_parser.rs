@@ -217,7 +217,7 @@ fn operation_tier_1<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
 fn operation_tier_2<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
     let mut left = operation_tier_3(tokens, index)?;
 
-    while match_one!(tokens, index, "<", "<=", ">", ">=") {
+    while match_one!(tokens, index, "<", "<=", ">", ">=", "==", "!=") {
         if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
             *index += 1;
             let right = operation_tier_3(tokens, index)?;
@@ -264,6 +264,8 @@ fn op_filter_from_special<'a>(special: &'a str, left: Filter<'a>, right: Filter<
         "<=" => Filter::LessThanOrEqual { left: Box::new(left), right: Box::new(right) },
         ">" => Filter::GreaterThan { left: Box::new(left), right: Box::new(right) },
         ">=" => Filter::GreaterThanOrEqual { left: Box::new(left), right: Box::new(right) },
+        "==" => Filter::Equal { left: Box::new(left), right: Box::new(right) },
+        "!=" => Filter::NotEqual { left: Box::new(left), right: Box::new(right) },
         "+" => Filter::Add { left: Box::new(left), right: Box::new(right) },
         "-" => Filter::Subtract { left: Box::new(left), right: Box::new(right) },
         "*" => Filter::Multiply { left: Box::new(left), right: Box::new(right) },
@@ -637,6 +639,19 @@ mod tests {
                     })
                 )
             ]))
+        );
+    }
+
+    #[test]
+    fn test_11() {
+        assert_eq!(
+            parse("select(type != \"object\")"),
+            Ok(Filter::Select(
+                Box::new(Filter::NotEqual {
+                    left: Box::new(Filter::Type),
+                    right: Box::new(Filter::Literal(JSONValue::String { s: "object", needs_escaping: false })),
+                })
+            ))
         );
     }
 }
