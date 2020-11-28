@@ -134,7 +134,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     JSONValue::Null => 0,
                     JSONValue::Object(x) => x.as_ref().0.keys().len(),
                     _ => panic!("Cannot get the length of {}", val),
-                } as i32
+                } as i64
             )
         })),
         Filter::Keys => Box::new(values.map(move |val| {
@@ -332,7 +332,7 @@ fn keys<'a>(val: JSONValue<'a>) -> Vec<JSONValue<'a>> {
             map.as_ref().0.keys().cloned().collect()
         },
         JSONValue::Array(arr) => 
-            (0..arr.len()).map(|i| JSONValue::Integer(i as i32)).collect(),
+            (0..arr.len()).map(|i| JSONValue::Integer(i as i64)).collect(),
         _ => panic!(format!("Cannot get keys from value {}", val))
     }
 }
@@ -463,7 +463,7 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     panic!(format!("Cannot multiply values {} and {}", a, b));
 }
 
-fn repeated_str<'a, 'b>(s: &'a str, n: i32) -> JSONValue<'b> {
+fn repeated_str<'a, 'b>(s: &'a str, n: i64) -> JSONValue<'b> {
     if n == 0 {
         return JSONValue::Null;
     } else {

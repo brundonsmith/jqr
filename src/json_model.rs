@@ -8,8 +8,8 @@ pub enum JSONValue<'a> {
     Array(Rc<Vec<JSONValue<'a>>>),
     AllocatedString(Rc<String>),
     String { s: &'a str, needs_escaping: bool },
-    Integer(i32),
-    Float(f32),
+    Integer(i64),
+    Float(f64),
     Bool(bool),
     Null,
 }
@@ -37,10 +37,10 @@ impl<'a> JSONValue<'a> {
         }
     }
 
-    pub fn as_float(&self) -> Option<f32> {
+    pub fn as_float(&self) -> Option<f64> {
         match self {
             JSONValue::Float(n) => Some(*n),
-            JSONValue::Integer(n) => Some(*n as f32),
+            JSONValue::Integer(n) => Some(*n as f64),
             _ => None,
         }
     }
