@@ -54,7 +54,7 @@ fn expression<'a>(code: &'a str, index: &mut usize, no_free: bool) -> Result<JSO
         object(code, index, no_free)
     } else if ch == Some('[') {
         array(code, index, no_free)
-    } else if ch.map(|c| c.is_numeric()).unwrap_or(false) {
+    } else if ch.map(|c| c.is_numeric() || c == '-').unwrap_or(false) {
         number(code, index)
     } else if try_match_front(code, index, TRUE_TOKEN) {
         Ok(JSONValue::Bool(true))
@@ -227,7 +227,14 @@ fn string<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseEr
 
 fn number<'a>(code: &'a str, index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
     let start = *index;
-    let mut front_end = *index + code[*index..].char_indices()
+
+    let sign_length = if code.as_bytes()[*index] == b'-' {
+        1
+    } else {
+        0
+    };
+
+    let mut front_end = *index + sign_length + code[*index + sign_length..].char_indices()
         .take_while(|(_, c)| c.is_numeric())
         .last()
         .map(|(index, ch)| index + ch.len_utf8())
@@ -476,6 +483,19 @@ mod parser_tests {
             parse("{ \"foo\": 1e-5 }", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
             vec![
                 Ok(JSONValue::Object(Rc::new((hash_map, Some("{ \"foo\": 1e-5 }")))))
+            ]
+        )
+    }
+
+    #[test]
+    fn test_12() {
+        let mut hash_map = HashMap::new();
+        hash_map.insert(JSONValue::String { s: "foo", needs_escaping: false }, JSONValue::Integer(-12));
+
+        assert_eq!(
+            parse("{ \"foo\": -12 }", false).collect::<Vec<Result<JSONValue,ParseError>>>(), 
+            vec![
+                Ok(JSONValue::Object(Rc::new((hash_map, Some("{ \"foo\": -12 }")))))
             ]
         )
     }
