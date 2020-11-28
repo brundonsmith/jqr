@@ -18,7 +18,7 @@ use filter_model::Filter;
 use json_model::{JSONValue, create_indentation_string, write_json};
 use json_parser::ParseError;
 use json_string_stream::{CharQueue, delimit_values};
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 
 
 fn main() -> Result<(),String> {
@@ -191,7 +191,7 @@ fn do_regular(options: &Options) -> Result<(),String> {
                 let mut file = File::open(json).map_err(|e| e.to_string())?;
 
                 if options.gzipped {
-                    GzDecoder::new(file).read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+                    MultiGzDecoder::new(file).read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
                 } else {
                     file.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
                 }
@@ -206,7 +206,7 @@ fn do_regular(options: &Options) -> Result<(),String> {
         let mut handle = stdin.lock();
 
         if options.gzipped {
-            GzDecoder::new(handle).read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+            MultiGzDecoder::new(handle).read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
         } else {
             handle.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
         }
@@ -265,7 +265,7 @@ fn do_streaming(options: &Options) -> Result<(),String> {
                 let reader = File::open(json).map_err(|e| e.to_string())?;
 
                 if options.gzipped {
-                    filter_and_print(CharQueue::new(GzDecoder::new(reader)), options)?;
+                    filter_and_print(CharQueue::new(MultiGzDecoder::new(reader)), options)?;
                 } else {
                     filter_and_print(CharQueue::new(reader), options)?;
                 }
@@ -274,7 +274,7 @@ fn do_streaming(options: &Options) -> Result<(),String> {
                 let reader = json.as_bytes();
 
                 if options.gzipped {
-                    filter_and_print(CharQueue::new(GzDecoder::new(reader)), options)?;
+                    filter_and_print(CharQueue::new(MultiGzDecoder::new(reader)), options)?;
                 } else {
                     filter_and_print(CharQueue::new(reader), options)?;
                 }
@@ -286,7 +286,7 @@ fn do_streaming(options: &Options) -> Result<(),String> {
         let reader = stdin.lock();
 
         if options.gzipped {
-            filter_and_print(CharQueue::new(GzDecoder::new(reader)), options)?;
+            filter_and_print(CharQueue::new(MultiGzDecoder::new(reader)), options)?;
         } else {
             filter_and_print(CharQueue::new(reader), options)?;
         }
@@ -297,7 +297,7 @@ fn do_streaming(options: &Options) -> Result<(),String> {
 
 fn filter_and_print<C: Iterator<Item=u8>>(bytes: C, options: &Options) -> Result<(),String> {
     for json_str in delimit_values(bytes, options.elide_root_array) {
-        println!("{}", json_str);
+        // println!("{}", &json_str[0..30]);
 
         let json_parsed = json_parser::parse_one(&json_str, options.no_free)
             .map_err(|e| create_parse_error_string(&json_str, e))?;
