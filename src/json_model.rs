@@ -385,11 +385,11 @@ impl<'a> Debug for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             JSONValue::Object(x) => {
-                f.write_str("Object([")?;
+                f.write_str("Object(")?;
                 for (key, value) in x.0.iter() {
                     f.write_str(&format!("({:?}, {:?}), ", key, value))?;
                 }
-                f.write_str("])")?;
+                f.write_str(")")?;
             }
             JSONValue::Array(x) => {
                 f.write_str("Array([")?;
