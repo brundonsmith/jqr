@@ -64,7 +64,7 @@ impl<R: Read> Iterator for CharQueue<R> {
     }
 }
 
-pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool) -> impl Iterator<Item=String> {
+pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool) -> impl Iterator<Item=Vec<u8>> {
 
     if elide_root_array {
         let mut first_byte = bytes.next();
@@ -120,7 +120,7 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                             bracket_depth -= 1;
                         
                         if bracket_depth == 0 {
-                            return Some(String::from_utf8(next_json_bytes).unwrap());
+                                return Some(next_json_bytes);
                         }
                         } else if byte == b'{' {
                             bracket_depth += 1;
@@ -141,7 +141,7 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                             bracket_depth -= 1;
                         
                         if bracket_depth == 0 {
-                            return Some(String::from_utf8(next_json_bytes).unwrap());
+                                return Some(next_json_bytes);
                         }
                         } else if byte == b'[' {
                             bracket_depth += 1;
@@ -152,12 +152,12 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                 },
                 b'"' => { // string
                     return traverse_and_push_string(&mut bytes, &mut next_json_bytes)
-                        .ok().map(|_| String::from_utf8(next_json_bytes).unwrap());
+                        .ok().map(|_| next_json_bytes);
                 },
                 _ => { // number, boolean, or null
                     while let Some(byte) = bytes.next() {
                         if byte.is_ascii_whitespace() {
-                            return Some(String::from_utf8(next_json_bytes).unwrap());
+                            return Some(next_json_bytes);
                         } else {
                             next_json_bytes.push(byte);
                         }

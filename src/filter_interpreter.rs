@@ -9,7 +9,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::ObjectIdentifierIndex { identifier, optional } => 
             Box::new(values.map(move |val| {
                 if let JSONValue::Object(contents) = val {
-                    contents.as_ref().0.get(&JSONValue::String { s: identifier, needs_escaping: false }).unwrap().clone()
+                    contents.as_ref().0.get(&JSONValue::String { s: identifier.as_bytes(), needs_escaping: false }).unwrap().clone()
                 } else if val == JSONValue::Null && *optional {
                     JSONValue::Null
                 } else {
@@ -58,10 +58,10 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                             }
                         } else if let JSONValue::String { s: string, needs_escaping } = val {
                             if needs_escaping {
-                                JSONValue::String { s: decoded_slice(&string, *start, *end), needs_escaping }
+                                JSONValue::String { s: decoded_slice(&string, *start, *end).as_bytes(), needs_escaping }
                             } else {
                                 JSONValue::AllocatedString(Rc::new(
-                                    slice(&string, start, end)
+                                    slice(std::str::from_utf8(string).unwrap(), start, end)
                                         .expect(&format!("Cannot get slice of {}", val))
                                 ))
                             }
@@ -128,7 +128,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                         if needs_escaping {
                             decoded_char_indices_iter(s).count()
                         } else {
-                            s.chars().count()
+                            std::str::from_utf8(s).unwrap().chars().count()
                         }
                     },
                     JSONValue::Null => 0,
@@ -192,7 +192,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::Has(key) => Box::new(values.map(move |val| {
             if let Some((key, needs_escaping)) = key.as_str() {
                 if let JSONValue::Object(contents) = val {
-                    let key = JSONValue::String { s: key, needs_escaping };
+                    let key = JSONValue::String { s: key.as_bytes(), needs_escaping };
 
                     return JSONValue::Bool(contents.as_ref().0.contains_key(&key));
                 }
@@ -206,7 +206,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
 
             panic!("Can't call has({}) on {}", key, val);
         })),
-        Filter::Type => Box::new(values.map(|val| JSONValue::String { s: val.type_name(), needs_escaping: false })),
+        Filter::Type => Box::new(values.map(|val| JSONValue::String { s: val.type_name().as_bytes(), needs_escaping: false })),
         Filter::Min => Box::new(values.map(|val| {
             if let JSONValue::Array(contents) = &val {
                 return contents.iter().min().cloned().unwrap_or(JSONValue::Null);
@@ -363,6 +363,9 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 
     if let JSONValue::String { s: a, needs_escaping: _ } = a {
         if let JSONValue::String { s: b, needs_escaping: _ } = b {
+            let a = std::str::from_utf8(a).unwrap();
+            let b = std::str::from_utf8(b).unwrap();
+
             return JSONValue::AllocatedString(Rc::new(String::from(a) + b));
         }
 
@@ -440,7 +443,7 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 
     if let JSONValue::String { s: a, needs_escaping: _ } = &a {
         if let JSONValue::Integer(b) = b {
-            return repeated_str(a, b);
+            return repeated_str(std::str::from_utf8(a).unwrap(), b);
         }
     } else if let JSONValue::AllocatedString(a) = &a {
         if let JSONValue::Integer(b) = b {
@@ -448,7 +451,7 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     } else if let JSONValue::Integer(a) = &a {
         if let JSONValue::String { s: b, needs_escaping: _ } = b {
-            return repeated_str(b, *a);
+            return repeated_str(std::str::from_utf8(b).unwrap(), *a);
         } else if let JSONValue::AllocatedString(b) = b {
             return repeated_str(&b, *a);
         }
@@ -518,8 +521,8 @@ fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     if let JSONValue::String { s: a, needs_escaping: ane } = &a {
         if let Some((b, bne)) = b.as_str() {
             return JSONValue::Array(Rc::new(
-                a.split(b)
-                    .map(|s| JSONValue::String { s, needs_escaping: *ane || bne })
+                std::str::from_utf8(a).unwrap().split(b)
+                    .map(|s| JSONValue::String { s: s.as_bytes(), needs_escaping: *ane || bne })
                     .collect()
             ));
         }
@@ -529,7 +532,7 @@ fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         if let Some((b, bne)) = b.as_str() {
             return JSONValue::Array(Rc::new(
                 if bne {
-                    let b: String = decoded_char_indices_iter(b).map(|(_, c)| c).collect();
+                    let b: String = decoded_char_indices_iter(b.as_bytes()).map(|(_, c)| c).collect();
                     let b = b.as_str();
 
                     a.split(b)
@@ -874,7 +877,7 @@ mod tests {
 
     #[test]
     fn slice_optional_operator() {
-        let input = json_parser::parse("null", false).map(|r| r.unwrap());
+        let input = json_parser::parse("null".as_bytes(), false).map(|r| r.unwrap());
         let filter = filter_parser::parse(".[]?").unwrap();
         println!("{:?}", filter);
 
@@ -971,10 +974,10 @@ mod tests {
     }
 
     fn test_filter(input_json: &str, filter: &str, output_json: &str) {
-        let input = json_parser::parse(input_json, false).map(|r| r.unwrap());
+        let input = json_parser::parse(input_json.as_bytes(), false).map(|r| r.unwrap());
         let filter = filter_parser::parse(filter).unwrap();
         println!("{:?}", filter);
-        let expected = json_parser::parse(output_json, false).map(|r| r.unwrap());
+        let expected = json_parser::parse(output_json.as_bytes(), false).map(|r| r.unwrap());
         apply_filter(&filter, input).zip(expected).for_each(|(r, e)| {
             assert_eq!(r, e)
         });

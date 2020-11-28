@@ -154,7 +154,7 @@ struct Options<'a> {
     gzipped: bool,
     no_free: bool,
 
-    indentation_string: String,
+    indentation_string: Vec<u8>,
     filter_parsed: Filter<'a>,
 }
 
@@ -184,21 +184,21 @@ impl<'a> Options<'a> {
 
 fn do_regular(options: &Options) -> Result<(),String> {
 
-    let mut json_buffer = String::new();
-    let json_str = if let Some(json) = options.json {
+    let mut json_buffer = Vec::new();
+    let json_slice: &[u8] = if let Some(json) = options.json {
         match options.kind {
             "file" => {
                 let mut file = File::open(json).map_err(|e| e.to_string())?;
 
                 if options.gzipped {
-                    MultiGzDecoder::new(file).read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+                    MultiGzDecoder::new(file).read_to_end(&mut json_buffer).map_err(|e| e.to_string())?;
                 } else {
-                    file.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+                    file.read_to_end(&mut json_buffer).map_err(|e| e.to_string())?;
                 }
     
-                json_buffer.as_str()
+                &json_buffer
             },
-            "inline" => json,
+            "inline" => json.as_bytes(),
             _ => unreachable!()
         }
     } else {
@@ -206,25 +206,26 @@ fn do_regular(options: &Options) -> Result<(),String> {
         let mut handle = stdin.lock();
 
         if options.gzipped {
-            MultiGzDecoder::new(handle).read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+            MultiGzDecoder::new(handle).read_to_end(&mut json_buffer).map_err(|e| e.to_string())?;
         } else {
-            handle.read_to_string(&mut json_buffer).map_err(|e| e.to_string())?;
+            handle.read_to_end(&mut json_buffer).map_err(|e| e.to_string())?;
         }
         
-        json_buffer.as_str()
+        &json_buffer
     };
 
-    let json_parsed = json_parser::parse(json_str, options.no_free).map(|r| {
+    let json_parsed = json_parser::parse(json_slice, options.no_free).map(|r| {
         match r {
             Ok(val) => val,
             Err(e) => {
-                panic!(create_parse_error_string(json_str, e));
+                println!("{}", create_parse_error_string(json_slice, e));
+                panic!();
             }
         }
     });
 
     if options.no_free {
-        std::mem::forget(json_str);
+        std::mem::forget(json_slice);
     }
 
     let filter: Filter = if options.elide_root_array {
@@ -241,17 +242,17 @@ fn do_regular(options: &Options) -> Result<(),String> {
 
     let filtered = apply_filter(&filter, json_parsed);
 
-    let mut out = String::new();
+    let mut out = Vec::new();
     for val in filtered {
         write_json(&val, 0, &options.indentation_string, options.colored, &mut out);
-        out.push('\n');
+        out.push(b'\n');
 
         if options.no_free {
             std::mem::forget(val);
         }
     }
 
-    std::io::stdout().write_all(out.as_bytes()).map_err(|e| e.to_string())?;
+    std::io::stdout().write_all(&out).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -265,18 +266,18 @@ fn do_streaming(options: &Options) -> Result<(),String> {
                 let reader = File::open(json).map_err(|e| e.to_string())?;
 
                 if options.gzipped {
-                    filter_and_print(CharQueue::new(MultiGzDecoder::new(reader)), options)?;
+                    filter_and_print(MultiGzDecoder::new(reader), options)?;
                 } else {
-                    filter_and_print(CharQueue::new(reader), options)?;
+                    filter_and_print(reader, options)?;
                 }
             },
             "inline" => {
                 let reader = json.as_bytes();
 
                 if options.gzipped {
-                    filter_and_print(CharQueue::new(MultiGzDecoder::new(reader)), options)?;
+                    filter_and_print(MultiGzDecoder::new(reader), options)?;
                 } else {
-                    filter_and_print(CharQueue::new(reader), options)?;
+                    filter_and_print(reader, options)?;
                 }
             },
             _ => unreachable!()
@@ -286,43 +287,48 @@ fn do_streaming(options: &Options) -> Result<(),String> {
         let reader = stdin.lock();
 
         if options.gzipped {
-            filter_and_print(CharQueue::new(MultiGzDecoder::new(reader)), options)?;
+            filter_and_print(MultiGzDecoder::new(reader), options)?;
         } else {
-            filter_and_print(CharQueue::new(reader), options)?;
+            filter_and_print(reader, options)?;
         }
     };
 
     Ok(())
 }
 
-fn filter_and_print<C: Iterator<Item=u8>>(bytes: C, options: &Options) -> Result<(),String> {
-    for json_str in delimit_values(bytes, options.elide_root_array) {
-        // println!("{}", &json_str[0..30]);
+fn filter_and_print<R: Read>(reader: R, options: &Options) -> Result<(),String> {
+    let bytes = CharQueue::new(reader);
 
-        let json_parsed = json_parser::parse_one(&json_str, options.no_free)
-            .map_err(|e| create_parse_error_string(&json_str, e))?;
+    // println!("reached loop");
+    for json_bytes in delimit_values(bytes, options.elide_root_array) {
+        // let end = usize::min(30, json_bytes.len());
+        // println!("{}", &json_str[0..end]);
 
-        let mut out = String::new();
+        let json_parsed = json_parser::parse_one(&json_bytes, options.no_free)
+            .map_err(|e| create_parse_error_string(&json_bytes, e))?;
+
+        let mut out = Vec::new();
         for val in apply_filter(&options.filter_parsed, std::iter::once(json_parsed)) {
             write_json(&val, 0, &options.indentation_string, options.colored, &mut out);
-            out.push('\n');
+            out.push(b'\n');
     
             if options.no_free {
                 std::mem::forget(val);
             }
         }
 
-        std::io::stdout().write_all(out.as_bytes()).map_err(|e| e.to_string())?;
+        std::io::stdout().write_all(&out).map_err(|e| e.to_string())?;
 
         if options.no_free {
-            std::mem::forget(json_str);
+            std::mem::forget(json_bytes);
         }
     }
 
     Ok(())
 }
 
-fn create_parse_error_string(json_str: &str, e: ParseError) -> String {
+fn create_parse_error_string(json_slice: &[u8], e: ParseError) -> String {
+    let json_str = std::str::from_utf8(json_slice).unwrap();
     let mut line = 1;
     let mut column = 1;
 

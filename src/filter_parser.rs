@@ -468,7 +468,7 @@ fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter
 
     if let Some(FilterLexeme::Identifier { s, quoted: true}) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
-        return Ok(Filter::Literal(JSONValue::String { s: *s, needs_escaping: false }));
+        return Ok(Filter::Literal(JSONValue::String { s: s.as_bytes(), needs_escaping: false }));
     }
     
     parenthesis(tokens, index)
@@ -649,7 +649,7 @@ mod tests {
             Ok(Filter::Select(
                 Box::new(Filter::NotEqual {
                     left: Box::new(Filter::Type),
-                    right: Box::new(Filter::Literal(JSONValue::String { s: "object", needs_escaping: false })),
+                    right: Box::new(Filter::Literal(JSONValue::String { s: "object".as_bytes(), needs_escaping: false })),
                 })
             ))
         );

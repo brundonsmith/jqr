@@ -1,13 +1,13 @@
-use std::{ops::Deref, cmp::Ordering, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
+use std::{cmp::Ordering, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use crate::json_parser::object_entries;
 
 #[derive(Debug, Clone)]
 pub enum JSONValue<'a> {
-    Object(Rc<(HashMap<JSONValue<'a>, JSONValue<'a>>, Option<&'a str>)>),
+    Object(Rc<(HashMap<JSONValue<'a>, JSONValue<'a>>, Option<&'a [u8]>)>),
     Array(Rc<Vec<JSONValue<'a>>>),
     AllocatedString(Rc<String>),
-    String { s: &'a str, needs_escaping: bool },
+    String { s: &'a [u8], needs_escaping: bool },
     Integer(i64),
     Float(f64),
     Bool(bool),
@@ -29,9 +29,17 @@ impl<'a> JSONValue<'a> {
         }
     }
 
-    pub fn as_str(&'a self) -> Option<(&'a str, bool)> {
+    pub fn as_str_bytes(&'a self) -> Option<(&'a [u8], bool)> {
         match self {
             JSONValue::String { s, needs_escaping } => Some((s, *needs_escaping)),
+            JSONValue::AllocatedString(s) => Some((s.as_bytes(), false)),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&'a self) -> Option<(&'a str, bool)> {
+        match self {
+            JSONValue::String { s, needs_escaping } => Some((std::str::from_utf8(s).unwrap(), *needs_escaping)),
             JSONValue::AllocatedString(s) => Some((s.as_str(), false)),
             _ => None,
         }
@@ -124,24 +132,24 @@ impl<'a> PartialEq for JSONValue<'a> {
 
 impl<'a> Eq for JSONValue<'a> {}
 
-pub fn decoded_length(raw: &str) -> usize {
+pub fn decoded_length(raw: &[u8]) -> usize {
     decoded_char_indices_iter(raw).count()
 }
 
-pub fn decoded_slice(raw: &str, start: Option<usize>, end: Option<usize>) -> &str {
+pub fn decoded_slice(raw: &[u8], start: Option<usize>, end: Option<usize>) -> &str {
     let indices: Vec<usize> = decoded_char_indices_iter(raw).map(|(i, _)| i).collect();
 
     if let Some(start) = start {
         if let Some(end) = end {
-            &raw[indices[start]..indices[end]]
+            &std::str::from_utf8(&raw[indices[start]..indices[end]]).unwrap()
         } else {
-            &raw[indices[start]..]
+            &std::str::from_utf8(&raw[indices[start]..]).unwrap()
         }
     } else {
         if let Some(end) = end {
-            &raw[..indices[end]]
+            &std::str::from_utf8(&raw[..indices[end]]).unwrap()
         } else {
-            raw
+            &std::str::from_utf8(raw).unwrap()
         }
     }
 }
@@ -166,7 +174,8 @@ fn format_radix(mut x: u32, radix: u32) -> String {
     result.into_iter().rev().collect()
 }
 
-pub fn decoded_char_indices_iter<'a>(raw: &'a str) -> impl 'a + Iterator<Item=(usize, char)> {
+pub fn decoded_char_indices_iter<'a>(raw: &'a [u8]) -> impl 'a + Iterator<Item=(usize, char)> {
+    let s = std::str::from_utf8(raw).unwrap();
     let mut index = 0;
 
     std::iter::from_fn(move || {
@@ -174,16 +183,16 @@ pub fn decoded_char_indices_iter<'a>(raw: &'a str) -> impl 'a + Iterator<Item=(u
             None
         } else {
             let current_index = index;
-            let c = raw[index..index+1].chars().next().unwrap();
+            let c = s[index..index+1].chars().next().unwrap();
 
             if c == '\\' {
-                let directive = raw[index+1..index+2].chars().next().unwrap();
+                let directive = s[index+1..index+2].chars().next().unwrap();
                 if let Some((i, _)) = ESCAPE_DIRECTIVES.iter().enumerate().filter(|(_, c)| directive == **c).next() {
                     index += 2;
                     Some((current_index, ESCAPE_CHAR_VALUES[i]))
                 } else if directive == 'u' {
                     index += 6;
-                    Some((current_index, decode_unicode(&raw[current_index+2..current_index+6])))
+                    Some((current_index, decode_unicode(&s[current_index+2..current_index+6])))
                 } else {
                     panic!("Encountered unexpected character escape \\{}", directive)
                 }
@@ -237,8 +246,8 @@ impl<'a> PartialOrd for JSONValue<'a> {
             return cmp_key_self.partial_cmp(&cmp_key_other);
         }
 
-        if let Some((s, sne)) = self.as_str() {
-            if let Some((other, one)) = other.as_str() {
+        if let Some((s, sne)) = self.as_str_bytes() {
+            if let Some((other, one)) = other.as_str_bytes() {
                 return 
                     if sne {
                         if one {
@@ -249,13 +258,13 @@ impl<'a> PartialOrd for JSONValue<'a> {
                         } else {
                             compare_lex!(
                                 decoded_char_indices_iter(s).map(|(_, c)| c),
-                                other.chars()
+                                std::str::from_utf8(other).unwrap().chars()
                             )
                         }
                     } else {
                         if one {
                             compare_lex!(
-                                s.chars(), 
+                                std::str::from_utf8(s).unwrap().chars(), 
                                 decoded_char_indices_iter(other).map(|(_, c)| c)
                             )
                         } else {
@@ -332,27 +341,27 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
 
 impl<'a> Display for JSONValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut buffer = String::new();
-        write_json(self, 0, "  ", false, &mut buffer);
-        f.write_str(&buffer)
+        let mut buffer = Vec::new();
+        write_json(self, 0, "  ".as_bytes(), false, &mut buffer);
+        f.write_str(std::str::from_utf8(&buffer).unwrap())
     }
 }
 
-const WHITE: &str = "\u{1b}[37m";
-const BLUE: &str = "\u{1b}[34m";
-const GREEN: &str = "\u{1b}[32m";
-const BLACK: &str = "\u{1b}[30m";
+const WHITE: &[u8] = "\u{1b}[37m".as_bytes();
+const BLUE: &[u8] = "\u{1b}[34m".as_bytes();
+const GREEN: &[u8] = "\u{1b}[32m".as_bytes();
+const BLACK: &[u8] = "\u{1b}[30m".as_bytes();
 
 pub fn write_json<'a>(
     val: &JSONValue<'a>,
     indentation: i32,
-    indentation_string: &str,
+    indentation_string: &[u8],
     colored: bool,
-    buffer: &mut String,
+    buffer: &mut Vec<u8>,
 ) {
     match val {
         JSONValue::Object(contents) => {
-            buffer.push('{');
+            buffer.push(b'{');
             let mut first = true;
 
             let entries = contents.as_ref().1
@@ -363,7 +372,7 @@ pub fn write_json<'a>(
 
             for (key, value) in entries.into_iter() {
                 if !first {
-                    buffer.push(',');
+                    buffer.push(b',');
                 } else {
                     first = false;
                 }
@@ -375,16 +384,16 @@ pub fn write_json<'a>(
                 );
 
                 if colored {
-                    buffer.push_str(BLUE);
+                    buffer.extend_from_slice(BLUE);
                 }
 
                 write_json(&key, 0, indentation_string, colored, buffer);
 
                 if colored {
-                    buffer.push_str(WHITE);
+                    buffer.extend_from_slice(WHITE);
                 }
 
-                buffer.push_str(": ");
+                buffer.extend_from_slice(": ".as_bytes());
                 write_json(
                     &value,
                     indentation + 1,
@@ -399,15 +408,15 @@ pub fn write_json<'a>(
                 indentation,
                 indentation_string,
             );
-            buffer.push('}')
+            buffer.push(b'}')
         }
         JSONValue::Array(contents) => {
-            buffer.push('[');
+            buffer.push(b'[');
             let mut first = true;
 
             for value in contents.as_ref() {
                 if !first {
-                    buffer.push(',');
+                    buffer.push(b',');
                 } else {
                     first = false;
                 }
@@ -431,83 +440,87 @@ pub fn write_json<'a>(
                 indentation,
                 indentation_string,
             );
-            buffer.push(']');
+            buffer.push(b']');
         }
         JSONValue::String { s, needs_escaping } => {
             if colored {
-                buffer.push_str(GREEN);
+                buffer.extend_from_slice(GREEN);
             }
 
-            buffer.push('\"');
+            buffer.push(b'\"');
             
             if *needs_escaping {
-                decoded_char_indices_iter(s).for_each(|(_, c)| buffer.push(c));
+                decoded_char_indices_iter(s).for_each(|(_, c)| {
+                    let mut char_buf: [u8;4] = [0;4];
+                    let s = c.encode_utf8(&mut char_buf);
+                    buffer.extend_from_slice(s.as_bytes());
+                });
             } else {
-                buffer.push_str(s);
+                buffer.extend_from_slice(s);
             }
 
-            buffer.push('\"');
+            buffer.push(b'\"');
 
             if colored {
-                buffer.push_str(WHITE);
+                buffer.extend_from_slice(WHITE);
             }
         }
         JSONValue::AllocatedString(s) => {
             if colored {
-                buffer.push_str(GREEN);
+                buffer.extend_from_slice(GREEN);
             }
 
-            buffer.push('\"');
-            buffer.push_str(s);
-            buffer.push('\"');
+            buffer.push(b'\"');
+            buffer.extend_from_slice(s.as_bytes());
+            buffer.push(b'\"');
 
             if colored {
-                buffer.push_str(WHITE);
+                buffer.extend_from_slice(WHITE);
             }
         }
-        JSONValue::Integer(n) => buffer.push_str(&n.to_string()),
-        JSONValue::Float(n) => buffer.push_str(&n.to_string()),
-        JSONValue::Bool(b) => buffer.push_str(match b {
-            true => "true",
-            false => "false",
+        JSONValue::Integer(n) => buffer.extend_from_slice(&n.to_string().as_bytes()),
+        JSONValue::Float(n) => buffer.extend_from_slice(&n.to_string().as_bytes()),
+        JSONValue::Bool(b) => buffer.extend_from_slice(match b {
+            true => "true".as_bytes(),
+            false => "false".as_bytes(),
         }),
         JSONValue::Null => {
             if colored {
-                buffer.push_str(BLACK);
+                buffer.extend_from_slice(BLACK);
             }
 
-            buffer.push_str("null");
+            buffer.extend_from_slice("null".as_bytes());
 
             if colored {
-                buffer.push_str(WHITE);
+                buffer.extend_from_slice(WHITE);
             }
         }
     }
 }
 
 fn write_newline_and_indentation(
-    buffer: &mut String,
+    buffer: &mut Vec<u8>,
     indentation: i32,
-    indentation_string: &str,
+    indentation_string: &[u8],
 ) {
-    buffer.push('\n');
+    buffer.push(b'\n');
 
     for _ in 0..indentation {
-        buffer.push_str(indentation_string);
+        buffer.extend_from_slice(indentation_string);
     }
 }
 
 pub fn create_indentation_string(
     indentation_step: u8,
     tab_indentation: bool,
-) -> String {
+) -> Vec<u8> {
     if tab_indentation {
-        String::from("\t")
+        Vec::from([b'\t'])
     } else {
-        let mut s = String::new();
+        let mut s = Vec::new();
 
         for _ in 0..indentation_step {
-            s.push(' ');
+            s.push(b' ');
         }
 
         s
@@ -523,7 +536,7 @@ mod tests {
     fn test_1() {
         assert_eq!(
             JSONValue::String {
-                s: "foo",
+                s: "foo".as_bytes(),
                 needs_escaping: false
             },
             JSONValue::AllocatedString(Rc::new(String::from("foo")))
@@ -532,31 +545,31 @@ mod tests {
 
     #[test]
     fn test_2() {
-        assert_eq!(decoded_length("abcde"), 5)
+        assert_eq!(decoded_length("abcde".as_bytes()), 5)
     }
 
     #[test]
     fn test_3() {
-        assert_eq!(decoded_length("a\\tbcd\\u1234e"), 7)
+        assert_eq!(decoded_length("a\\tbcd\\u1234e".as_bytes()), 7)
     }
 
     #[test]
     fn test_4() {
-        assert_eq!(decoded_slice("absde", Some(1), Some(3)), "bs")
+        assert_eq!(decoded_slice("absde".as_bytes(), Some(1), Some(3)), "bs")
     }
 
     #[test]
     fn test_5() {
-        assert_eq!(decoded_slice("a\\tbcd\\u1234e", Some(2), Some(6)), "bcd\\u1234")
+        assert_eq!(decoded_slice("a\\tbcd\\u1234e".as_bytes(), Some(2), Some(6)), "bcd\\u1234")
     }
 
     #[test]
     fn test_6() {
-        assert_eq!(decoded_slice("a\\tbcd\\u1234e", Some(1), Some(3)), "\\tb")
+        assert_eq!(decoded_slice("a\\tbcd\\u1234e".as_bytes(), Some(1), Some(3)), "\\tb")
     }
 
     #[test]
     fn test_7() {
-        assert_eq!(decoded_char_indices_iter("\\u1234\\u1234\\u1234").collect::<Vec<(usize, char)>>(), vec![ (0, '\u{1234}'), (6, '\u{1234}'), (12, '\u{1234}') ])
+        assert_eq!(decoded_char_indices_iter("\\u1234\\u1234\\u1234".as_bytes()).collect::<Vec<(usize, char)>>(), vec![ (0, '\u{1234}'), (6, '\u{1234}'), (12, '\u{1234}') ])
     }
 }
