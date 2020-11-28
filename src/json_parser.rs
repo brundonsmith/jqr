@@ -218,11 +218,7 @@ fn string<'a>(code: &'a [u8], index: &mut usize) -> Result<JSONValue<'a>, ParseE
 fn number<'a>(code: &'a [u8], index: &mut usize) -> Result<JSONValue<'a>, ParseError> {
     let start = *index;
 
-    let sign_length = if code[*index] == b'-' {
-        1
-    } else {
-        0
-    };
+    let sign_length = (code[*index] == b'-') as usize;
 
     let mut front_end = *index + sign_length + code[*index + sign_length..].iter().enumerate()
         .take_while(|(_, c)| c.is_ascii_digit())
