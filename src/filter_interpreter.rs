@@ -198,9 +198,9 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 }
             }
             
-            if let JSONValue::Integer(key) = key {
+            if let Some(key) = key.as_int() {
                 if let JSONValue::Array(contents) = val {
-                    return JSONValue::Bool((*key as usize) < contents.len());
+                    return JSONValue::Bool((key as usize) < contents.len());
                 }
             }
 
@@ -341,12 +341,12 @@ fn keys<'a>(val: JSONValue<'a>) -> Vec<JSONValue<'a>> {
 fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    if let JSONValue::Integer(a) = a {
-        if let JSONValue::Integer(b) = b {
+    if let Some(a) = a.as_int() {
+        if let Some(b) = b.as_int() {
             return JSONValue::Integer(a + b);
         }
     }
-
+    
     if let Some(a) = a.as_float() {
         if let Some(b) = b.as_float() {
             return JSONValue::Float(a + b);
@@ -400,8 +400,8 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    if let JSONValue::Integer(a) = a {
-        if let JSONValue::Integer(b) = b {
+    if let Some(a) = a.as_int() {
+        if let Some(b) = b.as_int() {
             return JSONValue::Integer(a - b);
         }
     }
@@ -429,8 +429,8 @@ fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    if let JSONValue::Integer(a) = a {
-        if let JSONValue::Integer(b) = b {
+    if let Some(a) = a.as_int() {
+        if let Some(b) = b.as_int() {
             return JSONValue::Integer(a * b);
         }
     }
@@ -442,18 +442,18 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     }
 
     if let JSONValue::String { s: a, needs_escaping: _ } = &a {
-        if let JSONValue::Integer(b) = b {
+        if let Some(b) = b.as_int() {
             return repeated_str(std::str::from_utf8(a).unwrap(), b);
         }
     } else if let JSONValue::AllocatedString(a) = &a {
-        if let JSONValue::Integer(b) = b {
+        if let Some(b) = b.as_int() {
             return repeated_str(a, b);
         }
-    } else if let JSONValue::Integer(a) = &a {
+    } else if let Some(a) = a.as_int() {
         if let JSONValue::String { s: b, needs_escaping: _ } = b {
-            return repeated_str(std::str::from_utf8(b).unwrap(), *a);
+            return repeated_str(std::str::from_utf8(b).unwrap(), a);
         } else if let JSONValue::AllocatedString(b) = b {
-            return repeated_str(&b, *a);
+            return repeated_str(&b, a);
         }
     }
 
@@ -506,8 +506,8 @@ fn merge_objects_recursive<'a: 'b, 'b>(a: &'b HashMap<JSONValue<'a>,JSONValue<'a
 fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    if let JSONValue::Integer(a) = a {
-        if let JSONValue::Integer(b) = b {
+    if let Some(a) = a.as_int() {
+        if let Some(b) = b.as_int() {
             return JSONValue::Integer(a / b);
         }
     }
@@ -553,8 +553,8 @@ fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
 fn modulo<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
 
-    if let JSONValue::Integer(a) = a {
-        if let JSONValue::Integer(b) = b {
+    if let Some(a) = a.as_int() {
+        if let Some(b) = b.as_int() {
             return JSONValue::Integer(a % b);
         }
     }

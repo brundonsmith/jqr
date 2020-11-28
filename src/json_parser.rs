@@ -236,7 +236,7 @@ fn number<'a>(code: &'a [u8], index: &mut usize) -> Result<JSONValue<'a>, ParseE
         front_end += exponent_length;
 
         *index = front_end;
-        return Ok(JSONValue::Float(std::str::from_utf8(&code[start..front_end]).unwrap().parse().unwrap()))
+        return Ok(JSONValue::Number(&code[start..front_end]))
     } else if code.get(front_end) == Some(&b'.') {
         let back_end_start = front_end + 1;
         let mut back_end = back_end_start + code[back_end_start..].iter().enumerate()
@@ -248,10 +248,10 @@ fn number<'a>(code: &'a [u8], index: &mut usize) -> Result<JSONValue<'a>, ParseE
         back_end += _try_get_number_exponent_length(&code[back_end..]);
 
         *index = back_end;
-        return Ok(JSONValue::Float(std::str::from_utf8(&code[start..back_end]).unwrap().parse().unwrap()));
+        return Ok(JSONValue::Number(&code[start..back_end]));
     } else {
         *index = front_end;
-        return Ok(JSONValue::Integer(std::str::from_utf8(&code[start..front_end]).unwrap().parse().unwrap()));
+        return Ok(JSONValue::Number(&code[start..front_end]));
     }
 }
 

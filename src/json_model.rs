@@ -8,6 +8,7 @@ pub enum JSONValue<'a> {
     Array(Rc<Vec<JSONValue<'a>>>),
     AllocatedString(Rc<String>),
     String { s: &'a [u8], needs_escaping: bool },
+    Number(&'a [u8]),
     Integer(i64),
     Float(f64),
     Bool(bool),
@@ -22,6 +23,7 @@ impl<'a> JSONValue<'a> {
             JSONValue::Array(_) => "array",
             JSONValue::AllocatedString(_) => "string",
             JSONValue::String { s: _, needs_escaping: _, } => "string",
+            JSONValue::Number(_) => "number",
             JSONValue::Integer(_) => "number",
             JSONValue::Float(_) => "number",
             JSONValue::Bool(_) => "boolean",
@@ -45,8 +47,17 @@ impl<'a> JSONValue<'a> {
         }
     }
 
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            JSONValue::Number(s) => std::str::from_utf8(s).unwrap().parse().ok(),
+            JSONValue::Integer(n) => Some(*n),
+            _ => None,
+        }
+    }
+
     pub fn as_float(&self) -> Option<f64> {
         match self {
+            JSONValue::Number(s) => std::str::from_utf8(s).unwrap().parse().ok(),
             JSONValue::Float(n) => Some(*n),
             JSONValue::Integer(n) => Some(*n as f64),
             _ => None,
@@ -110,11 +121,35 @@ impl<'a> PartialEq for JSONValue<'a> {
                 JSONValue::AllocatedString(_) => self.partial_cmp(other) == Some(Ordering::Equal),
                 _ => false,
             },
+            JSONValue::Number(x1) => {
+                let s1 = std::str::from_utf8(x1).unwrap();
+
+                match *other {
+                    JSONValue::Number(x2) => {
+                        let s2 = std::str::from_utf8(x2).unwrap();
+
+                        s1.eq(s2) || s1.parse::<f64>().unwrap().eq(&s2.parse::<f64>().unwrap())
+                    },
+                    JSONValue::Integer(x2) => s1.parse::<i64>().unwrap().eq(&x2),
+                    JSONValue::Float(x2) => s1.parse::<f64>().unwrap().eq(&x2),
+                    _ => false,
+                }
+            },
             JSONValue::Integer(x1) => match *other {
+                JSONValue::Number(x2) => {
+                    let s2 = std::str::from_utf8(x2).unwrap();
+
+                    x1.eq(&s2.parse::<i64>().unwrap())
+                },
                 JSONValue::Integer(x2) => x1.eq(&x2),
                 _ => false,
             },
             JSONValue::Float(x1) => match *other {
+                JSONValue::Number(x2) => {
+                    let s2 = std::str::from_utf8(x2).unwrap();
+
+                    x1.eq(&s2.parse::<f64>().unwrap())
+                },
                 JSONValue::Float(x2) => x1.eq(&x2),
                 _ => false,
             },
@@ -331,6 +366,7 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
         JSONValue::Array(_) => 5,
         JSONValue::String { s: _, needs_escaping: _, } => 4,
         JSONValue::AllocatedString(_) => 4,
+        JSONValue::Number(_) => 3,
         JSONValue::Integer(_) => 3,
         JSONValue::Float(_) => 3,
         JSONValue::Bool(true) => 2,
@@ -478,6 +514,7 @@ pub fn write_json<'a>(
                 buffer.extend_from_slice(WHITE);
             }
         }
+        JSONValue::Number(s) => buffer.extend_from_slice(s),
         JSONValue::Integer(n) => buffer.extend_from_slice(&n.to_string().as_bytes()),
         JSONValue::Float(n) => buffer.extend_from_slice(&n.to_string().as_bytes()),
         JSONValue::Bool(b) => buffer.extend_from_slice(match b {
