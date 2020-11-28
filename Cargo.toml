@@ -11,5 +11,10 @@ clap = "2.33.3"
 atty = "0.2.14"
 flate2 = "1.0.19"
 
+[profile.release]
+lto = true
+panic = "abort"
+
 [profile.dev]
+lto = true
 opt-level=3
