@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, fmt::{Debug, Display}, hash::Hash, rc::Rc};
 
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 
 use crate::json_parser::object_entries;
 

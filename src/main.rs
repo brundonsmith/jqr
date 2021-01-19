@@ -2,7 +2,7 @@
 
 extern crate clap;
 extern crate atty;
-extern crate fxhash;
+extern crate rustc_hash;
 
 mod json_model;
 mod json_string_stream;
@@ -300,10 +300,7 @@ fn do_streaming(options: &Options) -> Result<(),String> {
 fn filter_and_print<R: Read>(reader: R, options: &Options) -> Result<(),String> {
     let bytes = CharQueue::new(reader);
 
-    // println!("reached loop");
     for json_bytes in delimit_values(bytes, options.elide_root_array) {
-        // let end = usize::min(30, json_bytes.len());
-        // println!("{}", &json_str[0..end]);
 
         let json_parsed = json_parser::parse_one(&json_bytes, options.no_free)
             .map_err(|e| create_parse_error_string(&json_bytes, e))?;

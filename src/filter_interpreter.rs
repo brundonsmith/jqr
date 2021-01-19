@@ -1,6 +1,6 @@
 use std::{hash::BuildHasherDefault, cmp::Ordering, collections::HashMap, rc::Rc};
 
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 
 use crate::json_model::{JSONValue, decoded_char_indices_iter, decoded_slice};
 use crate::filter_model::Filter;
