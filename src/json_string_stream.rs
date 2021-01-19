@@ -1,11 +1,12 @@
-use std::{io::Read, collections::VecDeque};
+use std::{io::Read};
 
 
 pub struct CharQueue<R: Read> {
     reader: R,
-    deque: VecDeque<u8>,
     eof: bool,
-    buf: [u8;1024],
+    buf: [u8;65536],
+    bytes_read: usize,
+    cursor: usize,
 }
 
 impl<R: Read> CharQueue<R> {
@@ -13,47 +14,51 @@ impl<R: Read> CharQueue<R> {
     pub fn new(reader: R) -> Self {
         Self {
             reader,
-            deque: VecDeque::new(),
+            buf: [0;65536],
+            bytes_read: 0,
+            cursor: 0,
             eof: false,
-            buf: [0;1024],
         }
     }
 
-    fn add_to_queue(&mut self) {
-        if !self.eof {
+    fn read_if_needed(&mut self) {
+        if self.is_empty() && !self.eof {
             loop {
                 let bytes_read = self.reader.read(&mut self.buf);
-    
+
                 if let Ok(bytes_read) = bytes_read {
                     if bytes_read == 0 {
                         self.eof = true;
                     }
-    
-                    self.deque.reserve_exact(bytes_read);
-                    for i in 0..bytes_read {
-                        self.deque.push_back(self.buf[i]);
-                    }
-    
+
+                    self.bytes_read = bytes_read;
+                    self.cursor = 0;
                     break;
                 }
             }
         }
     }
 
+    fn is_empty(&self) -> bool {
+        self.cursor >= self.bytes_read
+    }
+
     pub fn peek(&mut self) -> Option<u8> {
-        if self.deque.is_empty() && !self.eof {
-            self.add_to_queue();
-        }
+        self.read_if_needed();
         
-        self.deque.front().map(|c| *c)
+        if self.is_empty() {
+            None
+        } else {
+            Some(self.buf[self.cursor])
+        }
     }
 
     pub fn pop(&mut self) -> Option<u8> {
-        if self.deque.is_empty() && !self.eof {
-            self.add_to_queue();
+        let val = self.peek();
+        if self.cursor < self.bytes_read {
+            self.cursor += 1;
         }
-
-       self.deque.pop_front()
+        val
     }
 }
 
