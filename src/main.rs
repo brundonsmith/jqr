@@ -132,8 +132,8 @@ fn main() -> Result<(),String> {
                 .takes_value(false)
         )
         .get_matches();
-
-    let options = Options::from(&matches);
+    
+    let options: Options = (&matches).into();
 
     if !options.stream {
         do_regular(&options)?;
@@ -159,8 +159,8 @@ struct Options<'a> {
     filter_parsed: Filter<'a>,
 }
 
-impl<'a> Options<'a> {
-    pub fn from(matches: &'a ArgMatches) -> Self {
+impl<'a> From<&'a ArgMatches<'a>> for Options<'a> {
+    fn from(matches: &'a ArgMatches) -> Self {
         let pattern = matches.value_of("PATTERN").unwrap();
         let indentation_step = matches.value_of("indent").unwrap().parse().unwrap();
         let tab_indentation = matches.is_present("tab");
@@ -177,7 +177,7 @@ impl<'a> Options<'a> {
             no_free: matches.is_present("no-free"),
 
             indentation_string: create_indentation_string(indentation_step, tab_indentation),
-            filter_parsed: filter_parser::parse(pattern).map_err(|e| e.to_string()).unwrap_or_else(|e| panic!(e))
+            filter_parsed: filter_parser::parse(pattern).map_err(|e| e.to_string()).unwrap_or_else(|e| panic!("{}", e))
         }
     }
 }

@@ -15,7 +15,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 } else if val == JSONValue::Null && *optional {
                     JSONValue::Null
                 } else {
-                    panic!(format!("Error: Object identifier index can only be used on values of type Object; tried to get property {} of {}", identifier, val))
+                    panic!("Error: Object identifier index can only be used on values of type Object; tried to get property {} of {}", identifier, val)
                 }
             })),
         Filter::ArrayIndex { index } => 
@@ -23,7 +23,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 if let JSONValue::Array(contents) = val {
                     contents[*index].clone()
                 } else {
-                    panic!(format!("Error: Array index can only be used on values of type Array; got {}", val))
+                    panic!("Error: Array index can only be used on values of type Array; got {}", val)
                 }
             })),
         Filter::Slice { start, end, optional } => 
@@ -40,7 +40,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     } else if val == JSONValue::Null && *optional {
                         None
                     } else {
-                        panic!(format!("Cannot get values of {}", val));
+                        panic!("Cannot get values of {}", val);
                     }
                 } else {
                     Some(Box::new(std::iter::once(
@@ -68,7 +68,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                                 ))
                             }
                         } else { 
-                            panic!(format!("Cannot get slice of {}", val));
+                            panic!("Cannot get slice of {}", val);
                         }
                     )))
                 }
@@ -118,7 +118,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
             if let JSONValue::Bool(v) = val {
                 return JSONValue::Bool(!v);
             } else {
-                panic!(format!("Error: 'not' can only be used on values of type Boolean; got '{}'", val));
+                panic!("Error: 'not' can only be used on values of type Boolean; got '{}'", val);
             }
         })),
 
@@ -260,7 +260,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         //         } else if *optional && next == &JSONValue::Null {
         //             return Rc::new(JSONValue::Null);
         //         } else {
-        //             panic!(format!("Error: Object identifier index can only be used on values of type Object; got {}", next))
+        //             panic!("Error: Object identifier index can only be used on values of type Object; got {}", next)
         //         }
         //     }
 
@@ -335,7 +335,7 @@ fn keys<'a>(val: JSONValue<'a>) -> Vec<JSONValue<'a>> {
         },
         JSONValue::Array(arr) => 
             (0..arr.len()).map(|i| JSONValue::Integer(i as i64)).collect(),
-        _ => panic!(format!("Cannot get keys from value {}", val))
+        _ => panic!("Cannot get keys from value {}", val)
     }
 }
 
@@ -371,7 +371,7 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
             return JSONValue::AllocatedString(Rc::new(String::from(a) + b));
         }
 
-        panic!(format!("Cannot add values {} and {}", JSONValue::String { s: a.clone(), needs_escaping: false }, b));
+        panic!("Cannot add values {} and {}", JSONValue::String { s: a.clone(), needs_escaping: false }, b);
     }
     
     if let JSONValue::Array(a) = a {
@@ -383,7 +383,7 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
             return JSONValue::Array(Rc::new(result));
         }
 
-        panic!(format!("Cannot add values {} and {}", JSONValue::Array(a.clone()), b));
+        panic!("Cannot add values {} and {}", JSONValue::Array(a.clone()), b);
     }
 
     if let JSONValue::Object(a) = &a {
@@ -396,7 +396,7 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    panic!(format!("Cannot add values {} and {}", a, b));
+    panic!("Cannot add values {} and {}", a, b);
 }
 
 fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
@@ -425,7 +425,7 @@ fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    panic!(format!("Cannot subtract values {} and {}", a, b));
+    panic!("Cannot subtract values {} and {}", a, b);
 }
 
 fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
@@ -465,7 +465,7 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    panic!(format!("Cannot multiply values {} and {}", a, b));
+    panic!("Cannot multiply values {} and {}", a, b);
 }
 
 fn repeated_str<'a, 'b>(s: &'a str, n: i64) -> JSONValue<'b> {
@@ -549,7 +549,7 @@ fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    panic!(format!("Cannot divide values {} and {}", a, b));
+    panic!("Cannot divide values {} and {}", a, b);
 }
 
 fn modulo<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
@@ -567,7 +567,7 @@ fn modulo<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    panic!(format!("Cannot get the modulus of values {} and {}", a, b));
+    panic!("Cannot get the modulus of values {} and {}", a, b);
 }
 
 fn equal<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
@@ -629,7 +629,7 @@ fn and<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    panic!(format!("Cannot apply 'and' to values {} and {}", a, b));
+    panic!("Cannot apply 'and' to values {} and {}", a, b);
 }
 
 fn or<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
@@ -641,7 +641,7 @@ fn or<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    panic!(format!("Cannot apply 'or' to values {} and {}", a, b));
+    panic!("Cannot apply 'or' to values {} and {}", a, b);
 }
 
 
