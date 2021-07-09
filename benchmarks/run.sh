@@ -2,7 +2,6 @@
 
 title () {
   echo ""
-  echo ""
   echo "$1"
   echo "$2"
 }
@@ -17,7 +16,7 @@ test () {
   /usr/bin/time -f "%Us user | %Ss system | %es real" "$@"
 }
 
-title "### Pipe a json to stdin"
+title "### Pipe a json to stdin" "(N/A)"
 echo "-- jq --"
 test cat benchmarks/big.json | jq '.' > /dev/null
 echo "-- query-json --"
