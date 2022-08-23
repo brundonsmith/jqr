@@ -1,20 +1,18 @@
-use std::{io::Read};
-
+use std::io::Read;
 
 pub struct CharQueue<R: Read> {
     reader: R,
     eof: bool,
-    buf: [u8;65536],
+    buf: [u8; 65536],
     bytes_read: usize,
     cursor: usize,
 }
 
 impl<R: Read> CharQueue<R> {
-
     pub fn new(reader: R) -> Self {
         Self {
             reader,
-            buf: [0;65536],
+            buf: [0; 65536],
             bytes_read: 0,
             cursor: 0,
             eof: false,
@@ -45,7 +43,7 @@ impl<R: Read> CharQueue<R> {
 
     pub fn peek(&mut self) -> Option<u8> {
         self.read_if_needed();
-        
+
         if self.is_empty() {
             None
         } else {
@@ -70,8 +68,10 @@ impl<R: Read> Iterator for CharQueue<R> {
     }
 }
 
-pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool) -> impl Iterator<Item=Vec<u8>> {
-
+pub fn delimit_values<C: Iterator<Item = u8>>(
+    mut bytes: C,
+    elide_root_array: bool,
+) -> impl Iterator<Item = Vec<u8>> {
     if elide_root_array {
         let mut first_byte = bytes.next();
 
@@ -105,7 +105,6 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
         }
 
         if let Some(first_byte) = first_byte {
-
             if elide_root_array && first_byte == b']' {
                 bytes.next();
                 return None;
@@ -135,7 +134,7 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                     }
 
                     return None;
-                },
+                }
                 b'[' => {
                     let mut bracket_depth = 1;
 
@@ -157,15 +156,18 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                     }
 
                     return None;
-                },
-                b'"' => { // string
+                }
+                b'"' => {
+                    // string
                     return traverse_and_push_string(&mut bytes, &mut next_json_bytes)
-                        .ok().map(|_| {
+                        .ok()
+                        .map(|_| {
                             previous_sement_size = next_json_bytes.len();
                             next_json_bytes
                         });
-                },
-                _ => { // number, boolean, or null
+                }
+                _ => {
+                    // number, boolean, or null
                     while let Some(byte) = bytes.next() {
                         if byte.is_ascii_whitespace() {
                             previous_sement_size = next_json_bytes.len();
@@ -178,13 +180,16 @@ pub fn delimit_values<C: Iterator<Item=u8>>(mut bytes: C, elide_root_array: bool
                     return None;
                 }
             }
-        } else {        
+        } else {
             return None;
         }
     })
 }
 
-fn traverse_and_push_string<C: Iterator<Item=u8>>(bytes: &mut C, result_bytes: &mut Vec<u8>) -> Result<(),()> {
+fn traverse_and_push_string<C: Iterator<Item = u8>>(
+    bytes: &mut C,
+    result_bytes: &mut Vec<u8>,
+) -> Result<(), ()> {
     let mut escape_count = 0;
 
     while let Some(byte) = bytes.next() {

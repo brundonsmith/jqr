@@ -1,29 +1,27 @@
 #![allow(dead_code)]
 
-extern crate clap;
 extern crate atty;
+extern crate clap;
 extern crate rustc_hash;
 
-mod json_model;
-mod json_string_stream;
-mod json_parser;
+mod filter_interpreter;
 mod filter_model;
 mod filter_parser;
-mod filter_interpreter;
+mod json_model;
+mod json_parser;
+mod json_string_stream;
 
 use std::{fs::File, io::Read, io::Write};
 
 use clap::ArgMatches;
-use filter_interpreter::apply_filter;//, apply_filter_hardcoded};
+use filter_interpreter::apply_filter; //, apply_filter_hardcoded};
 use filter_model::Filter;
+use flate2::read::MultiGzDecoder;
 use json_model::{create_indentation_string, write_json};
 use json_parser::ParseError;
-use json_string_stream::{CharQueue, delimit_values};
-use flate2::read::MultiGzDecoder;
+use json_string_stream::{delimit_values, CharQueue};
 
-
-fn main() -> Result<(),String> {
-
+fn main() -> Result<(), String> {
     let matches = clap::App::new("jqr")
         .version("0.1")
         .author("Brandon Smith <mail@brandonsmith.ninja>")
@@ -31,12 +29,12 @@ fn main() -> Result<(),String> {
         .arg(
             clap::Arg::with_name("PATTERN")
                 .help("The query pattern")
-                .required(true)
+                .required(true),
         )
         .arg(
             clap::Arg::with_name("JSON")
                 .help("File name or inlined JSON string")
-                .required(false)
+                .required(false),
         )
         .arg(
             clap::Arg::with_name("kind")
@@ -51,14 +49,14 @@ fn main() -> Result<(),String> {
                 .long("indent")
                 .help("Number of spaces to indent by")
                 .default_value("2")
-                .required(false)
+                .required(false),
         )
         .arg(
             clap::Arg::with_name("tab")
                 .long("tab")
                 .help("Indent with tabs instead of spaces (--indent value is ignored)")
                 .required(false)
-                .takes_value(false)
+                .takes_value(false),
         )
         .arg(
             clap::Arg::with_name("color-output")
@@ -66,7 +64,7 @@ fn main() -> Result<(),String> {
                 .short("C")
                 .help("Force colored output")
                 .required(false)
-                .takes_value(false)
+                .takes_value(false),
         )
         .arg(
             clap::Arg::with_name("monochrome-output")
@@ -74,7 +72,7 @@ fn main() -> Result<(),String> {
                 .short("M")
                 .help("Force monochrome output")
                 .required(false)
-                .takes_value(false)
+                .takes_value(false),
         )
         .arg(
             clap::Arg::with_name("stream")
@@ -84,9 +82,10 @@ fn main() -> Result<(),String> {
                     Whitespace-separated JSON values will be parsed and filtered 
                     (and their results printed) one at a time. NOTE: This can be 
                     considerably slower, but it will allow processing of very 
-                    large JSON inputs that can't fit into memory."))
+                    large JSON inputs that can't fit into memory.",
+                ))
                 .required(false)
-                .takes_value(false)
+                .takes_value(false),
         )
         .arg(
             clap::Arg::with_name("elide-root-array")
@@ -105,9 +104,10 @@ fn main() -> Result<(),String> {
                     beginning of your filter, and in fact this is how it's 
                     implemented for the non-streaming case, but changing the
                     filter does not afford the streaming benefits of passing the 
-                    flag."))
+                    flag.",
+                ))
                 .required(false)
-                .takes_value(false)
+                .takes_value(false),
         )
         .arg(
             clap::Arg::with_name("gzipped")
@@ -115,9 +115,10 @@ fn main() -> Result<(),String> {
                 .help(&normalize_help_text(
                     "Set this flag to signal that the input file or stdin data 
                     is gzipped. The compressed data will be decompressed before 
-                    processing (works with or without --stream)."))
+                    processing (works with or without --stream).",
+                ))
                 .required(false)
-                .takes_value(false)
+                .takes_value(false),
         )
         .arg(
             clap::Arg::with_name("no-free")
@@ -127,12 +128,13 @@ fn main() -> Result<(),String> {
                     possible, intentionally leaking objects (until the process 
                     ends) but saving time on system calls. In testing this 
                     tends to yield a 5%-10% performance improvement, at the 
-                    expense of strictly-increasing memory usage."))
+                    expense of strictly-increasing memory usage.",
+                ))
                 .required(false)
-                .takes_value(false)
+                .takes_value(false),
         )
         .get_matches();
-    
+
     let options: Options = (&matches).into();
 
     if !options.stream {
@@ -170,21 +172,22 @@ impl<'a> From<&'a ArgMatches<'a>> for Options<'a> {
             json: matches.value_of("JSON"),
             indentation_step,
             tab_indentation,
-            colored: !matches.is_present("monochrome-output") && (matches.is_present("color-output") || atty::is(atty::Stream::Stdout)),
+            colored: !matches.is_present("monochrome-output")
+                && (matches.is_present("color-output") || atty::is(atty::Stream::Stdout)),
             stream: matches.is_present("stream"),
             elide_root_array: matches.is_present("elide-root-array"),
             gzipped: matches.is_present("gzipped"),
             no_free: matches.is_present("no-free"),
 
             indentation_string: create_indentation_string(indentation_step, tab_indentation),
-            filter_parsed: filter_parser::parse(pattern).map_err(|e| e.to_string()).unwrap_or_else(|e| panic!("{}", e))
+            filter_parsed: filter_parser::parse(pattern)
+                .map_err(|e| e.to_string())
+                .unwrap_or_else(|e| panic!("{}", e)),
         }
     }
 }
 
-
-fn do_regular(options: &Options) -> Result<(),String> {
-
+fn do_regular(options: &Options) -> Result<(), String> {
     let mut json_buffer = Vec::new();
     let json_slice: &[u8] = if let Some(json) = options.json {
         match options.kind {
@@ -192,36 +195,41 @@ fn do_regular(options: &Options) -> Result<(),String> {
                 let mut file = File::open(json).map_err(|e| e.to_string())?;
 
                 if options.gzipped {
-                    MultiGzDecoder::new(file).read_to_end(&mut json_buffer).map_err(|e| e.to_string())?;
+                    MultiGzDecoder::new(file)
+                        .read_to_end(&mut json_buffer)
+                        .map_err(|e| e.to_string())?;
                 } else {
-                    file.read_to_end(&mut json_buffer).map_err(|e| e.to_string())?;
+                    file.read_to_end(&mut json_buffer)
+                        .map_err(|e| e.to_string())?;
                 }
-    
+
                 &json_buffer
-            },
+            }
             "inline" => json.as_bytes(),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     } else {
         let stdin = std::io::stdin();
         let mut handle = stdin.lock();
 
         if options.gzipped {
-            MultiGzDecoder::new(handle).read_to_end(&mut json_buffer).map_err(|e| e.to_string())?;
+            MultiGzDecoder::new(handle)
+                .read_to_end(&mut json_buffer)
+                .map_err(|e| e.to_string())?;
         } else {
-            handle.read_to_end(&mut json_buffer).map_err(|e| e.to_string())?;
+            handle
+                .read_to_end(&mut json_buffer)
+                .map_err(|e| e.to_string())?;
         }
-        
+
         &json_buffer
     };
 
-    let json_parsed = json_parser::parse(json_slice, options.no_free).map(|r| {
-        match r {
-            Ok(val) => val,
-            Err(e) => {
-                println!("{}", create_parse_error_string(json_slice, e));
-                panic!();
-            }
+    let json_parsed = json_parser::parse(json_slice, options.no_free).map(|r| match r {
+        Ok(val) => val,
+        Err(e) => {
+            println!("{}", create_parse_error_string(json_slice, e));
+            panic!();
         }
     });
 
@@ -232,10 +240,24 @@ fn do_regular(options: &Options) -> Result<(),String> {
     let filter: Filter = if options.elide_root_array {
         if let Filter::Pipe(vec) = &options.filter_parsed {
             let mut stages = vec.clone();
-            stages.insert(0, Filter::Slice { start: None, end: None, optional: false });
+            stages.insert(
+                0,
+                Filter::Slice {
+                    start: None,
+                    end: None,
+                    optional: false,
+                },
+            );
             Filter::Pipe(stages)
         } else {
-            Filter::Pipe(vec![ Filter::Slice { start: None, end: None, optional: false }, options.filter_parsed.clone() ])
+            Filter::Pipe(vec![
+                Filter::Slice {
+                    start: None,
+                    end: None,
+                    optional: false,
+                },
+                options.filter_parsed.clone(),
+            ])
         }
     } else {
         options.filter_parsed.clone()
@@ -245,7 +267,13 @@ fn do_regular(options: &Options) -> Result<(),String> {
 
     let mut out = Vec::new();
     for val in filtered {
-        write_json(&val, 0, &options.indentation_string, options.colored, &mut out);
+        write_json(
+            &val,
+            0,
+            &options.indentation_string,
+            options.colored,
+            &mut out,
+        );
         out.push(b'\n');
 
         if options.no_free {
@@ -253,14 +281,14 @@ fn do_regular(options: &Options) -> Result<(),String> {
         }
     }
 
-    std::io::stdout().write_all(&out).map_err(|e| e.to_string())?;
+    std::io::stdout()
+        .write_all(&out)
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
-
-fn do_streaming(options: &Options) -> Result<(),String> {
-
+fn do_streaming(options: &Options) -> Result<(), String> {
     if let Some(json) = options.json {
         match options.kind {
             "file" => {
@@ -271,7 +299,7 @@ fn do_streaming(options: &Options) -> Result<(),String> {
                 } else {
                     filter_and_print(reader, options)?;
                 }
-            },
+            }
             "inline" => {
                 let reader = json.as_bytes();
 
@@ -280,8 +308,8 @@ fn do_streaming(options: &Options) -> Result<(),String> {
                 } else {
                     filter_and_print(reader, options)?;
                 }
-            },
-            _ => unreachable!()
+            }
+            _ => unreachable!(),
         }
     } else {
         let stdin = std::io::stdin();
@@ -297,25 +325,32 @@ fn do_streaming(options: &Options) -> Result<(),String> {
     Ok(())
 }
 
-fn filter_and_print<R: Read>(reader: R, options: &Options) -> Result<(),String> {
+fn filter_and_print<R: Read>(reader: R, options: &Options) -> Result<(), String> {
     let bytes = CharQueue::new(reader);
 
     for json_bytes in delimit_values(bytes, options.elide_root_array) {
-
         let json_parsed = json_parser::parse_one(&json_bytes, options.no_free)
             .map_err(|e| create_parse_error_string(&json_bytes, e))?;
 
         let mut out = Vec::new();
         for val in apply_filter(&options.filter_parsed, std::iter::once(json_parsed)) {
-            write_json(&val, 0, &options.indentation_string, options.colored, &mut out);
+            write_json(
+                &val,
+                0,
+                &options.indentation_string,
+                options.colored,
+                &mut out,
+            );
             out.push(b'\n');
-    
+
             if options.no_free {
                 std::mem::forget(val);
             }
         }
 
-        std::io::stdout().write_all(&out).map_err(|e| e.to_string())?;
+        std::io::stdout()
+            .write_all(&out)
+            .map_err(|e| e.to_string())?;
 
         if options.no_free {
             std::mem::forget(json_bytes);
@@ -330,7 +365,11 @@ fn create_parse_error_string(json_slice: &[u8], e: ParseError) -> String {
     let mut line = 1;
     let mut column = 1;
 
-    for c in json_str.char_indices().take_while(|(i, _)| *i + 1 < e.index).map(|(_, c)| c) {
+    for c in json_str
+        .char_indices()
+        .take_while(|(i, _)| *i + 1 < e.index)
+        .map(|(_, c)| c)
+    {
         if c == '\n' {
             line += 1;
             column = 1;
@@ -339,8 +378,14 @@ fn create_parse_error_string(json_slice: &[u8], e: ParseError) -> String {
         }
     }
 
-    let preview_end = usize::min(e.index+30, json_str.len());
-    format!("Error parsing JSON at {}:{} - {}\nNear here:\n{}", line, column, e.msg, &json_str[e.index..preview_end])
+    let preview_end = usize::min(e.index + 30, json_str.len());
+    format!(
+        "Error parsing JSON at {}:{} - {}\nNear here:\n{}",
+        line,
+        column,
+        e.msg,
+        &json_str[e.index..preview_end]
+    )
 }
 
 fn normalize_help_text(s: &str) -> String {

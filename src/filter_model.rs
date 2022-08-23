@@ -2,15 +2,22 @@ use std::fmt::Display;
 
 use crate::json_model::JSONValue;
 
-
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Filter<'a> {
-
     // basics
     Identity,
-    ObjectIdentifierIndex { identifier: &'a str, optional: bool },
-    ArrayIndex { index: usize },
-    Slice { start: Option<usize>, end: Option<usize>, optional: bool },
+    ObjectIdentifierIndex {
+        identifier: &'a str,
+        optional: bool,
+    },
+    ArrayIndex {
+        index: usize,
+    },
+    Slice {
+        start: Option<usize>,
+        end: Option<usize>,
+        optional: bool,
+    },
     Literal(JSONValue<'a>),
 
     // combinators
@@ -18,24 +25,66 @@ pub enum Filter<'a> {
     Pipe(Vec<Filter<'a>>),
 
     // operators
-    Add { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    Subtract { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    Multiply { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    Divide { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    Modulo { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    Alternative { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    Add {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    Subtract {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    Multiply {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    Divide {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    Modulo {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    Alternative {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
 
     // comparison
-    Equal { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    NotEqual  { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    Equal {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    NotEqual {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
 
-    LessThan { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    LessThanOrEqual { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    GreaterThan { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    GreaterThanOrEqual { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    LessThan {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    LessThanOrEqual {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    GreaterThan {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    GreaterThanOrEqual {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
 
-    And { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
-    Or { left: Box<Filter<'a>>, right: Box<Filter<'a>> },
+    And {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
+    Or {
+        left: Box<Filter<'a>>,
+        right: Box<Filter<'a>>,
+    },
     Not,
 
     // functions
@@ -52,45 +101,44 @@ pub enum Filter<'a> {
     Max,
     Flatten,
     Reverse,
-
     // _MapSelect(Box<Filter<'a>>),
     // _PropertyChain(Vec<(&'a str, bool)>),
 }
 
-
 macro_rules! fmt_binary_op {
-    ($f:ident, $left:ident, $symbol:literal, $right:ident) => {
-        {
-            $left.fmt($f)?;
-            $f.write_str(" ")?;
-            $f.write_str($symbol)?;
-            $f.write_str(" ")?;
-            $right.fmt($f)?;
-            Ok(())
-        }
-    };
+    ($f:ident, $left:ident, $symbol:literal, $right:ident) => {{
+        $left.fmt($f)?;
+        $f.write_str(" ")?;
+        $f.write_str($symbol)?;
+        $f.write_str(" ")?;
+        $right.fmt($f)?;
+        Ok(())
+    }};
 }
 
 macro_rules! fmt_function {
-    ($f:ident, $name:literal, $inner:ident) => {
-        {   
-            $f.write_str($name)?;
-            $f.write_str("(")?;
-            $inner.fmt($f)?;
-            $f.write_str(")")?;
-            Ok(())
-        }
-    };
+    ($f:ident, $name:literal, $inner:ident) => {{
+        $f.write_str($name)?;
+        $f.write_str("(")?;
+        $inner.fmt($f)?;
+        $f.write_str(")")?;
+        Ok(())
+    }};
 }
 
 impl<'a> Display for Filter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Filter::Identity => f.write_str("."),
-            Filter::ObjectIdentifierIndex { identifier, optional } => {
+            Filter::ObjectIdentifierIndex {
+                identifier,
+                optional,
+            } => {
                 f.write_str(".")?;
 
-                if identifier.chars().next().unwrap().is_alphabetic() && identifier.chars().all(|c| c.is_alphanumeric()) {
+                if identifier.chars().next().unwrap().is_alphabetic()
+                    && identifier.chars().all(|c| c.is_alphanumeric())
+                {
                     f.write_str(identifier)?;
                 } else {
                     f.write_str("[\"")?;
@@ -103,7 +151,7 @@ impl<'a> Display for Filter<'a> {
                 }
 
                 Ok(())
-            },
+            }
             Filter::ArrayIndex { index } => {
                 f.write_str(".")?;
 
@@ -112,8 +160,12 @@ impl<'a> Display for Filter<'a> {
                 f.write_str("]")?;
 
                 Ok(())
-            },
-            Filter::Slice { start, end, optional } => {
+            }
+            Filter::Slice {
+                start,
+                end,
+                optional,
+            } => {
                 f.write_str(".")?;
 
                 f.write_str("[")?;
@@ -131,7 +183,7 @@ impl<'a> Display for Filter<'a> {
                 }
 
                 Ok(())
-            },
+            }
             Filter::Literal(val) => f.write_str(&format!("{}", val)),
             Filter::Comma(inner) => {
                 let mut first = true;
@@ -146,9 +198,25 @@ impl<'a> Display for Filter<'a> {
                 }
 
                 Ok(())
-            },
+            }
             Filter::Pipe(inner) => {
-                if inner.iter().all(|f| matches!(f, Filter::ObjectIdentifierIndex { identifier: _, optional: _ }) || matches!(f, Filter::ArrayIndex { index: _ }) ||  matches!(f, Filter::Slice { start: None, end: None, optional: _ })) {
+                if inner.iter().all(|f| {
+                    matches!(
+                        f,
+                        Filter::ObjectIdentifierIndex {
+                            identifier: _,
+                            optional: _
+                        }
+                    ) || matches!(f, Filter::ArrayIndex { index: _ })
+                        || matches!(
+                            f,
+                            Filter::Slice {
+                                start: None,
+                                end: None,
+                                optional: _
+                            }
+                        )
+                }) {
                     for segment in inner {
                         f.write_str(&format!("{}", segment))?;
                     }
@@ -168,7 +236,7 @@ impl<'a> Display for Filter<'a> {
 
                     Ok(())
                 }
-            },
+            }
             Filter::Add { left, right } => fmt_binary_op!(f, left, "+", right),
             Filter::Subtract { left, right } => fmt_binary_op!(f, left, "-", right),
             Filter::Multiply { left, right } => fmt_binary_op!(f, left, "*", right),
@@ -207,7 +275,11 @@ mod tests {
 
     #[test]
     fn test_1() {
-        let parsed = filter_parser::parse("map(select(.base.Attack > 100)) | map(.name.english)").unwrap();
-        assert_eq!(format!("{}", parsed), "map(select(.base.Attack > 100)) | map(.name.english)")
+        let parsed =
+            filter_parser::parse("map(select(.base.Attack > 100)) | map(.name.english)").unwrap();
+        assert_eq!(
+            format!("{}", parsed),
+            "map(select(.base.Attack > 100)) | map(.name.english)"
+        )
     }
 }

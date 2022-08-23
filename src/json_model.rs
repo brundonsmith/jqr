@@ -1,12 +1,17 @@
-use std::{cmp::Ordering, fmt::{Debug, Display}, hash::Hash, rc::Rc};
+use std::{
+    cmp::Ordering,
+    fmt::{Debug, Display},
+    hash::Hash,
+    rc::Rc,
+};
 
 use rustc_hash::FxHashMap;
 
 use crate::json_parser::object_entries;
 
-pub const NULL: [u8;4] = [ b'n', b'u', b'l', b'l' ];
-pub const TRUE: [u8;4] = [ b't', b'r', b'u', b'e' ];
-pub const FALSE: [u8;5] = [ b'f', b'a', b'l', b's', b'e' ];
+pub const NULL: [u8; 4] = [b'n', b'u', b'l', b'l'];
+pub const TRUE: [u8; 4] = [b't', b'r', b'u', b'e'];
+pub const FALSE: [u8; 5] = [b'f', b'a', b'l', b's', b'e'];
 
 #[derive(Clone)]
 pub enum JSONValue<'a> {
@@ -22,13 +27,15 @@ pub enum JSONValue<'a> {
 }
 
 impl<'a> JSONValue<'a> {
-
     pub fn type_name(&self) -> &'static str {
         match self {
             JSONValue::Object(_) => "object",
             JSONValue::Array(_) => "array",
             JSONValue::AllocatedString(_) => "string",
-            JSONValue::String { s: _, needs_escaping: _, } => "string",
+            JSONValue::String {
+                s: _,
+                needs_escaping: _,
+            } => "string",
             JSONValue::Number(_) => "number",
             JSONValue::Integer(_) => "number",
             JSONValue::Float(_) => "number",
@@ -47,7 +54,9 @@ impl<'a> JSONValue<'a> {
 
     pub fn as_str(&'a self) -> Option<(&'a str, bool)> {
         match self {
-            JSONValue::String { s, needs_escaping } => Some((std::str::from_utf8(s).unwrap(), *needs_escaping)),
+            JSONValue::String { s, needs_escaping } => {
+                Some((std::str::from_utf8(s).unwrap(), *needs_escaping))
+            }
             JSONValue::AllocatedString(s) => Some((s.as_str(), false)),
             _ => None,
         }
@@ -82,10 +91,10 @@ impl<'a> Hash for JSONValue<'a> {
                     key.hash(state);
                     x.0.get(key).hash(state);
                 }
-            },
+            }
             JSONValue::Array(x) => x.hash(state),
             JSONValue::AllocatedString(x) => x.hash(state),
-            JSONValue::String { s, needs_escaping, } => {
+            JSONValue::String { s, needs_escaping } => {
                 if *needs_escaping {
                     for (_, c) in decoded_char_indices_iter(s) {
                         c.hash(state);
@@ -93,7 +102,7 @@ impl<'a> Hash for JSONValue<'a> {
                 } else {
                     s.hash(state);
                 }
-            },
+            }
             JSONValue::Integer(x) => x.hash(state),
             // JSONValue::Float(x) => x.hash(state),
             JSONValue::Bool(x) => x.hash(state),
@@ -117,13 +126,22 @@ impl<'a> PartialEq for JSONValue<'a> {
                 JSONValue::Array(x2) => x1.as_ref().eq(x2.as_ref()),
                 _ => false,
             },
-            JSONValue::AllocatedString( x1) => match other {
-                JSONValue::String { s: _, needs_escaping: _ } => self.partial_cmp(other) == Some(Ordering::Equal),
+            JSONValue::AllocatedString(x1) => match other {
+                JSONValue::String {
+                    s: _,
+                    needs_escaping: _,
+                } => self.partial_cmp(other) == Some(Ordering::Equal),
                 JSONValue::AllocatedString(x2) => x1.eq(x2),
                 _ => false,
             },
-            JSONValue::String { s: x1, needs_escaping: _ } => match other {
-                JSONValue::String { s: x2, needs_escaping: _ } => x1.eq(x2),
+            JSONValue::String {
+                s: x1,
+                needs_escaping: _,
+            } => match other {
+                JSONValue::String {
+                    s: x2,
+                    needs_escaping: _,
+                } => x1.eq(x2),
                 JSONValue::AllocatedString(_) => self.partial_cmp(other) == Some(Ordering::Equal),
                 _ => false,
             },
@@ -135,18 +153,18 @@ impl<'a> PartialEq for JSONValue<'a> {
                         let s2 = std::str::from_utf8(x2).unwrap();
 
                         s1.eq(s2) || s1.parse::<f64>().unwrap().eq(&s2.parse::<f64>().unwrap())
-                    },
+                    }
                     JSONValue::Integer(x2) => s1.parse::<i64>().unwrap().eq(&x2),
                     JSONValue::Float(x2) => s1.parse::<f64>().unwrap().eq(&x2),
                     _ => false,
                 }
-            },
+            }
             JSONValue::Integer(x1) => match *other {
                 JSONValue::Number(x2) => {
                     let s2 = std::str::from_utf8(x2).unwrap();
 
                     x1.eq(&s2.parse::<i64>().unwrap())
-                },
+                }
                 JSONValue::Integer(x2) => x1.eq(&x2),
                 _ => false,
             },
@@ -155,7 +173,7 @@ impl<'a> PartialEq for JSONValue<'a> {
                     let s2 = std::str::from_utf8(x2).unwrap();
 
                     x1.eq(&s2.parse::<f64>().unwrap())
-                },
+                }
                 JSONValue::Float(x2) => x1.eq(&x2),
                 _ => false,
             },
@@ -215,7 +233,7 @@ fn format_radix(mut x: u32, radix: u32) -> String {
     result.into_iter().rev().collect()
 }
 
-pub fn decoded_char_indices_iter<'a>(raw: &'a [u8]) -> impl 'a + Iterator<Item=(usize, char)> {
+pub fn decoded_char_indices_iter<'a>(raw: &'a [u8]) -> impl 'a + Iterator<Item = (usize, char)> {
     let s = std::str::from_utf8(raw).unwrap();
     let mut index = 0;
 
@@ -224,16 +242,24 @@ pub fn decoded_char_indices_iter<'a>(raw: &'a [u8]) -> impl 'a + Iterator<Item=(
             None
         } else {
             let current_index = index;
-            let c = s[index..index+1].chars().next().unwrap();
+            let c = s[index..index + 1].chars().next().unwrap();
 
             if c == '\\' {
-                let directive = s[index+1..index+2].chars().next().unwrap();
-                if let Some((i, _)) = ESCAPE_DIRECTIVES.iter().enumerate().filter(|(_, c)| directive == **c).next() {
+                let directive = s[index + 1..index + 2].chars().next().unwrap();
+                if let Some((i, _)) = ESCAPE_DIRECTIVES
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| directive == **c)
+                    .next()
+                {
                     index += 2;
                     Some((current_index, ESCAPE_CHAR_VALUES[i]))
                 } else if directive == 'u' {
                     index += 6;
-                    Some((current_index, decode_unicode(&s[current_index+2..current_index+6])))
+                    Some((
+                        current_index,
+                        decode_unicode(&s[current_index + 2..current_index + 6]),
+                    ))
                 } else {
                     panic!("Encountered unexpected character escape \\{}", directive)
                 }
@@ -249,34 +275,32 @@ const ESCAPE_DIRECTIVES: [char; 8] = ['\\', '"', 't', 'r', 'n', 'f', 'b', '/'];
 const ESCAPE_CHAR_VALUES: [char; 8] = ['\\', '"', '\t', '\r', '\n', '\u{000c}', '\u{0008}', '/'];
 
 macro_rules! compare_lex {
-    ($iter_a:expr, $iter_b:expr) => {
-        {
-            let iter_a = $iter_a;
-            let mut iter_b = $iter_b;
+    ($iter_a:expr, $iter_b:expr) => {{
+        let iter_a = $iter_a;
+        let mut iter_b = $iter_b;
 
-            for a in iter_a {
-                let b = iter_b.next();
-        
-                if let Some(b) = b {
-                    let ord = a.partial_cmp(&b).unwrap();
-            
-                    if ord != Ordering::Equal {
-                        return Some(ord);
-                    }
-                } else {
-                    // a is longer than b
-                    return Some(Ordering::Greater);
-                } 
-            }
-        
-            if iter_b.next().is_some() {
-                // b is longer than a
-               Some(Ordering::Less)
+        for a in iter_a {
+            let b = iter_b.next();
+
+            if let Some(b) = b {
+                let ord = a.partial_cmp(&b).unwrap();
+
+                if ord != Ordering::Equal {
+                    return Some(ord);
+                }
             } else {
-                Some(Ordering::Equal)
+                // a is longer than b
+                return Some(Ordering::Greater);
             }
         }
-    };
+
+        if iter_b.next().is_some() {
+            // b is longer than a
+            Some(Ordering::Less)
+        } else {
+            Some(Ordering::Equal)
+        }
+    }};
 }
 
 impl<'a> PartialOrd for JSONValue<'a> {
@@ -289,30 +313,28 @@ impl<'a> PartialOrd for JSONValue<'a> {
 
         if let Some((s, sne)) = self.as_str_bytes() {
             if let Some((other, one)) = other.as_str_bytes() {
-                return 
-                    if sne {
-                        if one {
-                            compare_lex!(
-                                decoded_char_indices_iter(s).map(|(_, c)| c),
-                                decoded_char_indices_iter(other).map(|(_, c)| c)
-                            )
-                        } else {
-                            compare_lex!(
-                                decoded_char_indices_iter(s).map(|(_, c)| c),
-                                std::str::from_utf8(other).unwrap().chars()
-                            )
-                        }
+                return if sne {
+                    if one {
+                        compare_lex!(
+                            decoded_char_indices_iter(s).map(|(_, c)| c),
+                            decoded_char_indices_iter(other).map(|(_, c)| c)
+                        )
                     } else {
-                        if one {
-                            compare_lex!(
-                                std::str::from_utf8(s).unwrap().chars(), 
-                                decoded_char_indices_iter(other).map(|(_, c)| c)
-                            )
-                        } else {
-                            s.partial_cmp(other)
-                        }
+                        compare_lex!(
+                            decoded_char_indices_iter(s).map(|(_, c)| c),
+                            std::str::from_utf8(other).unwrap().chars()
+                        )
                     }
-                ;
+                } else {
+                    if one {
+                        compare_lex!(
+                            std::str::from_utf8(s).unwrap().chars(),
+                            decoded_char_indices_iter(other).map(|(_, c)| c)
+                        )
+                    } else {
+                        s.partial_cmp(other)
+                    }
+                };
             }
         }
 
@@ -344,7 +366,11 @@ impl<'a> PartialOrd for JSONValue<'a> {
                     }
                 }
 
-                for (a, b) in self_keys.iter().map(|k| s.as_ref().0.get(k).unwrap()).zip(other_keys.iter().map(|k| other.as_ref().0.get(k).unwrap())) {
+                for (a, b) in self_keys
+                    .iter()
+                    .map(|k| s.as_ref().0.get(k).unwrap())
+                    .zip(other_keys.iter().map(|k| other.as_ref().0.get(k).unwrap()))
+                {
                     let ord = a.partial_cmp(b).unwrap();
 
                     if ord != Ordering::Equal {
@@ -370,7 +396,10 @@ fn type_cmp_key(val: &JSONValue) -> u8 {
     match val {
         JSONValue::Object(_) => 6,
         JSONValue::Array(_) => 5,
-        JSONValue::String { s: _, needs_escaping: _, } => 4,
+        JSONValue::String {
+            s: _,
+            needs_escaping: _,
+        } => 4,
         JSONValue::AllocatedString(_) => 4,
         JSONValue::Number(_) => 3,
         JSONValue::Integer(_) => 3,
@@ -402,7 +431,11 @@ impl<'a> Debug for JSONValue<'a> {
                 f.write_str(&format!("AllocatedString(\"{}\")", x))?;
             }
             JSONValue::String { s, needs_escaping } => {
-                f.write_str(&format!("String {{ s: \"{}\", needs_escaping: {} }}", std::str::from_utf8(s).unwrap(), needs_escaping))?;
+                f.write_str(&format!(
+                    "String {{ s: \"{}\", needs_escaping: {} }}",
+                    std::str::from_utf8(s).unwrap(),
+                    needs_escaping
+                ))?;
             }
             JSONValue::Number(x) => {
                 f.write_str(&format!("Number(\"{}\")", std::str::from_utf8(x).unwrap()))?;
@@ -450,11 +483,18 @@ pub fn write_json<'a>(
             buffer.push(b'{');
             let mut first = true;
 
-            let entries = contents.as_ref().1
+            let entries = contents
+                .as_ref()
+                .1
                 .map(|json| object_entries(json).unwrap())
-                .unwrap_or(contents.as_ref().0.iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect());
+                .unwrap_or(
+                    contents
+                        .as_ref()
+                        .0
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                );
 
             for (key, value) in entries.into_iter() {
                 if !first {
@@ -463,11 +503,7 @@ pub fn write_json<'a>(
                     first = false;
                 }
 
-                write_newline_and_indentation(
-                    buffer,
-                    indentation + 1,
-                    indentation_string,
-                );
+                write_newline_and_indentation(buffer, indentation + 1, indentation_string);
 
                 if colored {
                     buffer.extend_from_slice(BLUE);
@@ -480,20 +516,10 @@ pub fn write_json<'a>(
                 }
 
                 buffer.extend_from_slice(": ".as_bytes());
-                write_json(
-                    &value,
-                    indentation + 1,
-                    indentation_string,
-                    colored,
-                    buffer,
-                );
+                write_json(&value, indentation + 1, indentation_string, colored, buffer);
             }
 
-            write_newline_and_indentation(
-                buffer,
-                indentation,
-                indentation_string,
-            );
+            write_newline_and_indentation(buffer, indentation, indentation_string);
             buffer.push(b'}')
         }
         JSONValue::Array(contents) => {
@@ -507,25 +533,11 @@ pub fn write_json<'a>(
                     first = false;
                 }
 
-                write_newline_and_indentation(
-                    buffer,
-                    indentation + 1,
-                    indentation_string,
-                );
-                write_json(
-                    value,
-                    indentation + 1,
-                    indentation_string,
-                    colored,
-                    buffer,
-                );
+                write_newline_and_indentation(buffer, indentation + 1, indentation_string);
+                write_json(value, indentation + 1, indentation_string, colored, buffer);
             }
 
-            write_newline_and_indentation(
-                buffer,
-                indentation,
-                indentation_string,
-            );
+            write_newline_and_indentation(buffer, indentation, indentation_string);
             buffer.push(b']');
         }
         JSONValue::String { s, needs_escaping } => {
@@ -534,10 +546,10 @@ pub fn write_json<'a>(
             }
 
             buffer.push(b'\"');
-            
+
             if *needs_escaping {
                 decoded_char_indices_iter(s).for_each(|(_, c)| {
-                    let mut char_buf: [u8;4] = [0;4];
+                    let mut char_buf: [u8; 4] = [0; 4];
                     let s = c.encode_utf8(&mut char_buf);
                     buffer.extend_from_slice(s.as_bytes());
                 });
@@ -597,10 +609,7 @@ fn write_newline_and_indentation(
     }
 }
 
-pub fn create_indentation_string(
-    indentation_step: u8,
-    tab_indentation: bool,
-) -> Vec<u8> {
+pub fn create_indentation_string(indentation_step: u8, tab_indentation: bool) -> Vec<u8> {
     if tab_indentation {
         Vec::from([b'\t'])
     } else {
@@ -616,7 +625,7 @@ pub fn create_indentation_string(
 
 #[cfg(test)]
 mod tests {
-    use super::{JSONValue, decoded_char_indices_iter, decoded_length, decoded_slice};
+    use super::{decoded_char_indices_iter, decoded_length, decoded_slice, JSONValue};
     use std::rc::Rc;
 
     #[test]
@@ -647,16 +656,26 @@ mod tests {
 
     #[test]
     fn test_5() {
-        assert_eq!(decoded_slice("a\\tbcd\\u1234e".as_bytes(), Some(2), Some(6)), "bcd\\u1234")
+        assert_eq!(
+            decoded_slice("a\\tbcd\\u1234e".as_bytes(), Some(2), Some(6)),
+            "bcd\\u1234"
+        )
     }
 
     #[test]
     fn test_6() {
-        assert_eq!(decoded_slice("a\\tbcd\\u1234e".as_bytes(), Some(1), Some(3)), "\\tb")
+        assert_eq!(
+            decoded_slice("a\\tbcd\\u1234e".as_bytes(), Some(1), Some(3)),
+            "\\tb"
+        )
     }
 
     #[test]
     fn test_7() {
-        assert_eq!(decoded_char_indices_iter("\\u1234\\u1234\\u1234".as_bytes()).collect::<Vec<(usize, char)>>(), vec![ (0, '\u{1234}'), (6, '\u{1234}'), (12, '\u{1234}') ])
+        assert_eq!(
+            decoded_char_indices_iter("\\u1234\\u1234\\u1234".as_bytes())
+                .collect::<Vec<(usize, char)>>(),
+            vec![(0, '\u{1234}'), (6, '\u{1234}'), (12, '\u{1234}')]
+        )
     }
 }

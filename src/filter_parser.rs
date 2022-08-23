@@ -2,15 +2,12 @@ use std::fmt::Display;
 
 use crate::{filter_model::Filter, json_model::JSONValue};
 
-
-
-pub fn parse<'a>(code: &'a str) -> Result<Filter,ParseError> {
+pub fn parse<'a>(code: &'a str) -> Result<Filter, ParseError> {
     let mut index = 0;
     filter(&tokenize(code).collect(), &mut index).map(|f| optimize(&f))
 }
 
-
-#[derive(Debug,PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
     msg: String,
     token: Option<Token<'a>>,
@@ -24,22 +21,20 @@ impl<'a> Display for ParseError<'a> {
         };
 
         f.write_str(&format!(
-            "Error parsing JSON at {} - {}", 
-            location, 
-            self.msg
+            "Error parsing JSON at {} - {}",
+            location, self.msg
         ))
     }
 }
 
-
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token<'a> {
     pub line_number: i32,
     pub column: usize,
     pub lexeme: FilterLexeme<'a>,
 }
 
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FilterLexeme<'a> {
     Special(&'a str),
     Identifier { s: &'a str, quoted: bool },
@@ -75,7 +70,11 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
         for special in &SPECIAL_TOKENS {
             if match_front(&code[index..], special) {
                 skip_to = Some(index + special.len());
-                return Some(Token { line_number, column: index - line_start, lexeme: FilterLexeme::Special(*special) });
+                return Some(Token {
+                    line_number,
+                    column: index - line_start,
+                    lexeme: FilterLexeme::Special(*special),
+                });
             }
         }
 
@@ -86,10 +85,13 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
 
             skip_to = Some(string_end_index + 1);
             let string_content = &code[index + 1..string_end_index];
-            return Some(Token { 
-                line_number, 
-                column: index - line_start, 
-                lexeme: FilterLexeme::Identifier { s: string_content, quoted: true }
+            return Some(Token {
+                line_number,
+                column: index - line_start,
+                lexeme: FilterLexeme::Identifier {
+                    s: string_content,
+                    quoted: true,
+                },
             });
         }
 
@@ -99,10 +101,13 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
 
             skip_to = Some(string_end_index);
             let string_content = &code[index..string_end_index];
-            return Some(Token { 
-                line_number, 
-                column: index - line_start, 
-                lexeme: FilterLexeme::Identifier { s: string_content, quoted: false }
+            return Some(Token {
+                line_number,
+                column: index - line_start,
+                lexeme: FilterLexeme::Identifier {
+                    s: string_content,
+                    quoted: false,
+                },
             });
         }
 
@@ -111,10 +116,10 @@ fn tokenize<'a>(code: &'a str) -> impl Iterator<Item = Token<'a>> {
             let front_end = index + match_pred(&code[index..], |c| c.is_numeric());
 
             skip_to = Some(front_end);
-            return Some(Token { 
+            return Some(Token {
                 line_number,
                 column: index - line_start,
-                lexeme: FilterLexeme::Number(code[index..front_end].parse().unwrap())
+                lexeme: FilterLexeme::Number(code[index..front_end].parse().unwrap()),
             });
         }
 
@@ -142,14 +147,13 @@ fn match_pred<F: Fn(char) -> bool>(code: &str, pred: F) -> usize {
         .unwrap_or(0)
 }
 
-const SPECIAL_TOKENS: [&str; 26] = ["{", "}", "[", "]", "(", ")", ",", "|", ":", 
-".", "?", "+", "-", "*", "//", "/", "%", "==", "!=", ">", ">=", "<", "<=", "and", 
-"or", "not"];
-
-
+const SPECIAL_TOKENS: [&str; 26] = [
+    "{", "}", "[", "]", "(", ")", ",", "|", ":", ".", "?", "+", "-", "*", "//", "/", "%", "==",
+    "!=", ">", ">=", "<", "<=", "and", "or", "not",
+];
 
 fn filter<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-   pipe(tokens, index)
+    pipe(tokens, index)
 }
 
 fn pipe<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
@@ -158,7 +162,7 @@ fn pipe<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, Pa
     if try_eat(tokens, index, "|").is_ok() {
         let second = comma(tokens, index)?;
 
-        let mut sequence = vec![ first, second ];
+        let mut sequence = vec![first, second];
 
         while try_eat(tokens, index, "|").is_ok() {
             let next = comma(tokens, index)?;
@@ -178,7 +182,7 @@ fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, P
     if try_eat(tokens, index, ",").is_ok() {
         let second = operation_tier_1(tokens, index)?;
 
-        let mut sequence = vec![ first, second ];
+        let mut sequence = vec![first, second];
 
         while try_eat(tokens, index, ",").is_ok() {
             let next = operation_tier_1(tokens, index)?;
@@ -192,7 +196,6 @@ fn comma<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, P
     return Ok(first);
 }
 
-
 macro_rules! match_one {
     ($alltokens:ident, $index:ident, $first_token:literal, $($tokens:literal),*) => {
         $alltokens.get(*$index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special($first_token))
@@ -200,11 +203,15 @@ macro_rules! match_one {
     };
 }
 
-fn operation_tier_1<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+fn operation_tier_1<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+) -> Result<Filter<'a>, ParseError<'a>> {
     let mut left = operation_tier_2(tokens, index)?;
 
     while match_one!(tokens, index, "and", "or", "//") {
-        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
+        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) {
+            // always true
             *index += 1;
             let right = operation_tier_2(tokens, index)?;
             left = op_filter_from_special(special, left, right);
@@ -214,11 +221,15 @@ fn operation_tier_1<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     return Ok(left);
 }
 
-fn operation_tier_2<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+fn operation_tier_2<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+) -> Result<Filter<'a>, ParseError<'a>> {
     let mut left = operation_tier_3(tokens, index)?;
 
     while match_one!(tokens, index, "<", "<=", ">", ">=", "==", "!=") {
-        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
+        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) {
+            // always true
             *index += 1;
             let right = operation_tier_3(tokens, index)?;
             left = op_filter_from_special(special, left, right);
@@ -228,11 +239,15 @@ fn operation_tier_2<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     return Ok(left);
 }
 
-fn operation_tier_3<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+fn operation_tier_3<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+) -> Result<Filter<'a>, ParseError<'a>> {
     let mut left = operation_tier_4(tokens, index)?;
 
     while match_one!(tokens, index, "+", "-") {
-        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
+        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) {
+            // always true
             *index += 1;
             let right = operation_tier_4(tokens, index)?;
             left = op_filter_from_special(special, left, right);
@@ -242,11 +257,15 @@ fn operation_tier_3<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     return Ok(left);
 }
 
-fn operation_tier_4<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+fn operation_tier_4<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+) -> Result<Filter<'a>, ParseError<'a>> {
     let mut left = function(tokens, index)?;
 
     while match_one!(tokens, index, "*", "/", "%") {
-        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) { // always true
+        if let Some(FilterLexeme::Special(special)) = tokens.get(*index).map(|t| &t.lexeme) {
+            // always true
             *index += 1;
             let right = function(tokens, index)?;
             left = op_filter_from_special(special, left, right);
@@ -258,26 +277,72 @@ fn operation_tier_4<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
 
 fn op_filter_from_special<'a>(special: &'a str, left: Filter<'a>, right: Filter<'a>) -> Filter<'a> {
     match special {
-        "and" => Filter::And { left: Box::new(left), right: Box::new(right) },
-        "or" => Filter::Or { left: Box::new(left), right: Box::new(right) },
-        "<" => Filter::LessThan { left: Box::new(left), right: Box::new(right) },
-        "<=" => Filter::LessThanOrEqual { left: Box::new(left), right: Box::new(right) },
-        ">" => Filter::GreaterThan { left: Box::new(left), right: Box::new(right) },
-        ">=" => Filter::GreaterThanOrEqual { left: Box::new(left), right: Box::new(right) },
-        "==" => Filter::Equal { left: Box::new(left), right: Box::new(right) },
-        "!=" => Filter::NotEqual { left: Box::new(left), right: Box::new(right) },
-        "+" => Filter::Add { left: Box::new(left), right: Box::new(right) },
-        "-" => Filter::Subtract { left: Box::new(left), right: Box::new(right) },
-        "*" => Filter::Multiply { left: Box::new(left), right: Box::new(right) },
-        "/" => Filter::Divide { left: Box::new(left), right: Box::new(right) },
-        "%" => Filter::Modulo { left: Box::new(left), right: Box::new(right) },
-        "//" => Filter::Alternative { left: Box::new(left), right: Box::new(right) },
+        "and" => Filter::And {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "or" => Filter::Or {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "<" => Filter::LessThan {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "<=" => Filter::LessThanOrEqual {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        ">" => Filter::GreaterThan {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        ">=" => Filter::GreaterThanOrEqual {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "==" => Filter::Equal {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "!=" => Filter::NotEqual {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "+" => Filter::Add {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "-" => Filter::Subtract {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "*" => Filter::Multiply {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "/" => Filter::Divide {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "%" => Filter::Modulo {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+        "//" => Filter::Alternative {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
         _ => unreachable!(),
     }
 }
 
 fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-    if let Some(FilterLexeme::Identifier { s: func, quoted: false }) = tokens.get(*index).map(|t| &t.lexeme) {
+    if let Some(FilterLexeme::Identifier {
+        s: func,
+        quoted: false,
+    }) = tokens.get(*index).map(|t| &t.lexeme)
+    {
         *index += 1;
 
         return match *func {
@@ -308,39 +373,47 @@ fn function<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>
                         } else {
                             Err(ParseError {
                                 token: tokens.get(*index - 1).cloned(),
-                                msg: format!("Expected string or number inside has(); got '{:?}'", inner),
+                                msg: format!(
+                                    "Expected string or number inside has(); got '{:?}'",
+                                    inner
+                                ),
                             })
                         }
-                    },
+                    }
                     _ => Err(ParseError {
                         token: tokens.get(*index - 1).cloned(),
                         msg: format!("Function '{}' is unknown", func),
-                    })
+                    }),
                 }
             }
-        }
+        };
     }
 
     return identifier_chain(tokens, index);
 }
 
-fn identifier_chain<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
+fn identifier_chain<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+) -> Result<Filter<'a>, ParseError<'a>> {
     if try_eat(tokens, index, ".").is_ok() || tokens[*index].lexeme == FilterLexeme::Special("?") {
         if let Ok(first_identifier) = indexer(tokens, index, false) {
-            if tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("[")) 
+            if tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("["))
                 || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("."))
-                || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("?")) {
-                
+                || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("?"))
+            {
                 let optional = try_eat(tokens, index, "?").is_ok();
                 try_eat(tokens, index, ".").ok();
 
                 if let Ok(second_identifier) = indexer(tokens, index, optional) {
-                    let mut path = vec![ first_identifier, second_identifier ];
+                    let mut path = vec![first_identifier, second_identifier];
 
-                    while tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("[")) 
-                        || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special(".")) 
-                        || tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("?")) {
-
+                    while tokens.get(*index).map(|t| &t.lexeme) == Some(&FilterLexeme::Special("["))
+                        || tokens.get(*index).map(|t| &t.lexeme)
+                            == Some(&FilterLexeme::Special("."))
+                        || tokens.get(*index).map(|t| &t.lexeme)
+                            == Some(&FilterLexeme::Special("?"))
+                    {
                         let optional = try_eat(tokens, index, "?").is_ok();
                         try_eat(tokens, index, ".").ok();
 
@@ -367,13 +440,17 @@ fn identifier_chain<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Fi
     return json_literal(tokens, index);
 }
 
-fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, optional: bool) -> Result<Filter<'a>, ParseError<'a>> {
+fn indexer<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+    optional: bool,
+) -> Result<Filter<'a>, ParseError<'a>> {
     if let Some(FilterLexeme::Identifier { s, quoted: _ }) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
 
-        return Ok(Filter::ObjectIdentifierIndex { 
+        return Ok(Filter::ObjectIdentifierIndex {
             identifier: s,
-            optional
+            optional,
         });
     } else if try_eat(tokens, index, "[").is_ok() {
         let filter = match &tokens.get(*index).map(|t| &t.lexeme) {
@@ -382,51 +459,55 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, optional: bool) -> Re
 
                 Ok(Filter::ObjectIdentifierIndex {
                     identifier: s,
-                    optional
+                    optional,
                 })
-            },
+            }
             Some(FilterLexeme::Number(start)) => {
                 *index += 1;
 
                 if try_eat(tokens, index, ":").is_ok() {
-                    let end = tokens.get(*index).map(|t| {
+                    let end = tokens
+                        .get(*index)
+                        .map(|t| {
+                            if let FilterLexeme::Number(i) = t.lexeme {
+                                *index += 1;
+                                Some(i)
+                            } else {
+                                None
+                            }
+                        })
+                        .flatten();
+
+                    Ok(Filter::Slice {
+                        start: Some(*start),
+                        end,
+                        optional,
+                    })
+                } else {
+                    Ok(Filter::ArrayIndex { index: *start })
+                }
+            }
+            Some(FilterLexeme::Special(":")) => {
+                *index += 1;
+
+                let end = tokens
+                    .get(*index)
+                    .map(|t| {
                         if let FilterLexeme::Number(i) = t.lexeme {
                             *index += 1;
                             Some(i)
                         } else {
                             None
                         }
-                    }).flatten();
-                    
-                    Ok(Filter::Slice {
-                        start: Some(*start),
-                        end,
-                        optional
                     })
-                } else {
-                    Ok(Filter::ArrayIndex { 
-                        index: *start
-                    })
-                }
-            },
-            Some(FilterLexeme::Special(":")) => {
-                *index += 1;
+                    .flatten();
 
-                let end = tokens.get(*index).map(|t| {
-                    if let FilterLexeme::Number(i) = t.lexeme {
-                        *index += 1;
-                        Some(i)
-                    } else {
-                        None
-                    }
-                }).flatten();
-                
                 Ok(Filter::Slice {
                     start: None,
                     end,
                     optional: try_eat(tokens, index, "?").is_ok(),
                 })
-            },
+            }
             Some(FilterLexeme::Special("]")) => {
                 *index += 1;
 
@@ -435,11 +516,11 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, optional: bool) -> Re
                     end: None,
                     optional: try_eat(tokens, index, "?").is_ok(),
                 }); // return early!
-            },
+            }
             token => Err(ParseError {
                 msg: format!("Unexpected token: {:?}", &token),
                 token: tokens.get(*index).cloned(),
-            })
+            }),
         };
 
         try_eat(tokens, index, "]")?;
@@ -459,23 +540,32 @@ fn indexer<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, optional: bool) -> Re
     });
 }
 
-fn json_literal<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-
+fn json_literal<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+) -> Result<Filter<'a>, ParseError<'a>> {
     if let Some(FilterLexeme::Number(n)) = tokens.get(*index).map(|t| &t.lexeme) {
         *index += 1;
         return Ok(Filter::Literal(JSONValue::Integer(*n as i64)));
     }
 
-    if let Some(FilterLexeme::Identifier { s, quoted: true}) = tokens.get(*index).map(|t| &t.lexeme) {
+    if let Some(FilterLexeme::Identifier { s, quoted: true }) =
+        tokens.get(*index).map(|t| &t.lexeme)
+    {
         *index += 1;
-        return Ok(Filter::Literal(JSONValue::String { s: s.as_bytes(), needs_escaping: false }));
+        return Ok(Filter::Literal(JSONValue::String {
+            s: s.as_bytes(),
+            needs_escaping: false,
+        }));
     }
-    
+
     parenthesis(tokens, index)
 }
 
-fn parenthesis<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<'a>, ParseError<'a>> {
-
+fn parenthesis<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+) -> Result<Filter<'a>, ParseError<'a>> {
     if try_eat(tokens, index, "(").is_ok() {
         let exp = filter(tokens, index);
         try_eat(tokens, index, ")")?;
@@ -489,9 +579,16 @@ fn parenthesis<'a>(tokens: &Vec<Token<'a>>, index: &mut usize) -> Result<Filter<
     });
 }
 
-fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Result<(), ParseError<'a>> {
+fn try_eat<'a>(
+    tokens: &Vec<Token<'a>>,
+    index: &mut usize,
+    expected: &str,
+) -> Result<(), ParseError<'a>> {
     if *index > tokens.len() - 1 {
-        return Err(ParseError { msg: format!("Expected '{}'", expected), token: tokens.get(*index - 1).cloned() });
+        return Err(ParseError {
+            msg: format!("Expected '{}'", expected),
+            token: tokens.get(*index - 1).cloned(),
+        });
     }
 
     if let Some(FilterLexeme::Special(found)) = tokens.get(*index).map(|t| &t.lexeme) {
@@ -499,20 +596,28 @@ fn try_eat<'a>(tokens: &Vec<Token<'a>>, index: &mut usize, expected: &str) -> Re
             *index += 1;
             Ok(())
         } else {
-            return Err(ParseError { msg: format!("Expected '{}', found '{}'", expected, found), token: tokens.get(*index).cloned() });
+            return Err(ParseError {
+                msg: format!("Expected '{}', found '{}'", expected, found),
+                token: tokens.get(*index).cloned(),
+            });
         }
     } else {
-        return Err(ParseError { msg: format!("Expected '{}'", expected), token: tokens.get(*index).cloned() });
+        return Err(ParseError {
+            msg: format!("Expected '{}'", expected),
+            token: tokens.get(*index).cloned(),
+        });
     }
 }
-
 
 fn optimize<'a>(filter: &Filter<'a>) -> Filter<'a> {
     match filter {
         Filter::Map(inner) => Filter::Map(Box::new(optimize(inner))),
         Filter::Select(inner) => Filter::Select(Box::new(optimize(inner))),
         Filter::Comma(vec) => Filter::Comma(vec.iter().map(optimize).collect()),
-        Filter::GreaterThan { left, right } => Filter::GreaterThan { left: Box::new(optimize(left)), right: Box::new(optimize(right)) },
+        Filter::GreaterThan { left, right } => Filter::GreaterThan {
+            left: Box::new(optimize(left)),
+            right: Box::new(optimize(right)),
+        },
 
         // Filter::Pipe(vec) => {
         //     if vec.iter().all(|f| matches!(f, Filter::ObjectIdentifierIndex { identifier: _, optional: _ })) {
@@ -528,7 +633,7 @@ fn optimize<'a>(filter: &Filter<'a>) -> Filter<'a> {
         //     }
         // },
 
-        // Filter::Map(inner) => 
+        // Filter::Map(inner) =>
         //     match inner.as_ref() {
         //         Filter::Select(pred) => {
         //             println!("_MapSelect added");
@@ -536,8 +641,7 @@ fn optimize<'a>(filter: &Filter<'a>) -> Filter<'a> {
         //         },
         //         _ => filter.clone()
         //     },
-
-        _ => filter.clone()
+        _ => filter.clone(),
     }
 }
 
@@ -549,76 +653,160 @@ mod tests {
 
     #[test]
     fn test_1() {
-        assert_eq!(parse(".foo"), Ok(Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }));
+        assert_eq!(
+            parse(".foo"),
+            Ok(Filter::ObjectIdentifierIndex {
+                identifier: "foo",
+                optional: false
+            })
+        );
     }
 
     #[test]
     fn test_2() {
-        assert_eq!(parse(".foo.bar"), Ok(Filter::Pipe(vec![ 
-            Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
-            Filter::ObjectIdentifierIndex { identifier: "bar", optional: false } 
-        ])));
+        assert_eq!(
+            parse(".foo.bar"),
+            Ok(Filter::Pipe(vec![
+                Filter::ObjectIdentifierIndex {
+                    identifier: "foo",
+                    optional: false
+                },
+                Filter::ObjectIdentifierIndex {
+                    identifier: "bar",
+                    optional: false
+                }
+            ]))
+        );
     }
 
     #[test]
     fn test_3() {
-        assert_eq!(parse(".foo.[]"), Ok(Filter::Pipe(vec![ 
-            Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
-            Filter::Slice { start: None, end: None, optional: false },
-        ])));
+        assert_eq!(
+            parse(".foo.[]"),
+            Ok(Filter::Pipe(vec![
+                Filter::ObjectIdentifierIndex {
+                    identifier: "foo",
+                    optional: false
+                },
+                Filter::Slice {
+                    start: None,
+                    end: None,
+                    optional: false
+                },
+            ]))
+        );
     }
 
     #[test]
     fn test_4() {
-        assert_eq!(parse(".foo?.bar.blah"), Ok(Filter::Pipe(vec![ 
-            Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
-            Filter::ObjectIdentifierIndex { identifier: "bar", optional: true }, 
-            Filter::ObjectIdentifierIndex { identifier: "blah", optional: false }, 
-        ])));
+        assert_eq!(
+            parse(".foo?.bar.blah"),
+            Ok(Filter::Pipe(vec![
+                Filter::ObjectIdentifierIndex {
+                    identifier: "foo",
+                    optional: false
+                },
+                Filter::ObjectIdentifierIndex {
+                    identifier: "bar",
+                    optional: true
+                },
+                Filter::ObjectIdentifierIndex {
+                    identifier: "blah",
+                    optional: false
+                },
+            ]))
+        );
     }
 
     #[test]
     fn test_5() {
-        assert_eq!(parse(".a | . | .b"), Ok(Filter::Pipe(vec![ 
-            Filter::ObjectIdentifierIndex { identifier: "a", optional: false }, 
-            Filter::Identity, 
-            Filter::ObjectIdentifierIndex { identifier: "b", optional: false }, 
-        ])));
+        assert_eq!(
+            parse(".a | . | .b"),
+            Ok(Filter::Pipe(vec![
+                Filter::ObjectIdentifierIndex {
+                    identifier: "a",
+                    optional: false
+                },
+                Filter::Identity,
+                Filter::ObjectIdentifierIndex {
+                    identifier: "b",
+                    optional: false
+                },
+            ]))
+        );
     }
 
     #[test]
     fn test_6() {
-        assert_eq!(parse(". , .[] , .b"), Ok(Filter::Comma(vec![ 
-            Filter::Identity, 
-            Filter::Slice { start: None, end: None, optional: false }, 
-            Filter::ObjectIdentifierIndex { identifier: "b", optional: false }, 
-        ])));
+        assert_eq!(
+            parse(". , .[] , .b"),
+            Ok(Filter::Comma(vec![
+                Filter::Identity,
+                Filter::Slice {
+                    start: None,
+                    end: None,
+                    optional: false
+                },
+                Filter::ObjectIdentifierIndex {
+                    identifier: "b",
+                    optional: false
+                },
+            ]))
+        );
     }
 
     #[test]
     fn test_7() {
-        assert_eq!(parse(".[12] , .[1:5] , .[24:], .[:763], .[:]"), Ok(Filter::Comma(vec![
-            Filter::ArrayIndex { index: 12 },
-            Filter::Slice { start: Some(1), end: Some(5), optional: false },
-            Filter::Slice { start: Some(24), end: None, optional: false },
-            Filter::Slice { start: None, end: Some(763), optional: false },
-            Filter::Slice { start: None, end: None, optional: false },
-        ])));
+        assert_eq!(
+            parse(".[12] , .[1:5] , .[24:], .[:763], .[:]"),
+            Ok(Filter::Comma(vec![
+                Filter::ArrayIndex { index: 12 },
+                Filter::Slice {
+                    start: Some(1),
+                    end: Some(5),
+                    optional: false
+                },
+                Filter::Slice {
+                    start: Some(24),
+                    end: None,
+                    optional: false
+                },
+                Filter::Slice {
+                    start: None,
+                    end: Some(763),
+                    optional: false
+                },
+                Filter::Slice {
+                    start: None,
+                    end: None,
+                    optional: false
+                },
+            ]))
+        );
     }
 
     #[test]
     fn test_8() {
-        assert_eq!(parse(".foo[2]"), Ok(Filter::Pipe(vec![
-            Filter::ObjectIdentifierIndex { identifier: "foo", optional: false }, 
-            Filter::ArrayIndex { index: 2 },
-        ])));
+        assert_eq!(
+            parse(".foo[2]"),
+            Ok(Filter::Pipe(vec![
+                Filter::ObjectIdentifierIndex {
+                    identifier: "foo",
+                    optional: false
+                },
+                Filter::ArrayIndex { index: 2 },
+            ]))
+        );
     }
-    
+
     #[test]
     fn test_9() {
         assert_eq!(
-            parse("map(.foo)"), 
-            Ok(Filter::Map(Box::new(Filter::ObjectIdentifierIndex { identifier: "foo", optional: false })))
+            parse("map(.foo)"),
+            Ok(Filter::Map(Box::new(Filter::ObjectIdentifierIndex {
+                identifier: "foo",
+                optional: false
+            })))
         );
     }
 
@@ -628,16 +816,26 @@ mod tests {
             parse(".second.store.books | map(.price + 10)"),
             Ok(Filter::Pipe(vec![
                 Filter::Pipe(vec![
-                    Filter::ObjectIdentifierIndex { identifier: "second", optional: false }, 
-                    Filter::ObjectIdentifierIndex { identifier: "store", optional: false }, 
-                    Filter::ObjectIdentifierIndex { identifier: "books", optional: false }
-                ]), 
-                Filter::Map(
-                    Box::new(Filter::Add { 
-                        left: Box::new(Filter::ObjectIdentifierIndex { identifier: "price", optional: false }),
-                        right: Box::new(Filter::Literal(JSONValue::Integer(10)))
-                    })
-                )
+                    Filter::ObjectIdentifierIndex {
+                        identifier: "second",
+                        optional: false
+                    },
+                    Filter::ObjectIdentifierIndex {
+                        identifier: "store",
+                        optional: false
+                    },
+                    Filter::ObjectIdentifierIndex {
+                        identifier: "books",
+                        optional: false
+                    }
+                ]),
+                Filter::Map(Box::new(Filter::Add {
+                    left: Box::new(Filter::ObjectIdentifierIndex {
+                        identifier: "price",
+                        optional: false
+                    }),
+                    right: Box::new(Filter::Literal(JSONValue::Integer(10)))
+                }))
             ]))
         );
     }
@@ -646,12 +844,13 @@ mod tests {
     fn test_11() {
         assert_eq!(
             parse("select(type != \"object\")"),
-            Ok(Filter::Select(
-                Box::new(Filter::NotEqual {
-                    left: Box::new(Filter::Type),
-                    right: Box::new(Filter::Literal(JSONValue::String { s: "object".as_bytes(), needs_escaping: false })),
-                })
-            ))
+            Ok(Filter::Select(Box::new(Filter::NotEqual {
+                left: Box::new(Filter::Type),
+                right: Box::new(Filter::Literal(JSONValue::String {
+                    s: "object".as_bytes(),
+                    needs_escaping: false
+                })),
+            })))
         );
     }
 }

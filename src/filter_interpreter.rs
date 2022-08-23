@@ -1,14 +1,17 @@
-use std::{hash::BuildHasherDefault, cmp::Ordering, collections::HashMap, rc::Rc};
+use std::{cmp::Ordering, collections::HashMap, hash::BuildHasherDefault, rc::Rc};
 
 use rustc_hash::FxHashMap;
 
-use crate::json_model::{JSONValue, decoded_char_indices_iter, decoded_slice};
 use crate::filter_model::Filter;
+use crate::json_model::{decoded_char_indices_iter, decoded_slice, JSONValue};
 
-pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=JSONValue<'a>>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
+pub fn apply_filter<'a>(
+    filter: &'a Filter<'a>,
+    values: impl 'a + Iterator<Item = JSONValue<'a>>,
+) -> Box<dyn 'a + Iterator<Item = JSONValue<'a>>> {
     match filter {
         Filter::Identity => Box::new(values),
-        Filter::ObjectIdentifierIndex { identifier, optional } => 
+        Filter::ObjectIdentifierIndex { identifier, optional } =>
             Box::new(values.map(move |val| {
                 if let JSONValue::Object(contents) = val {
                     contents.as_ref().0.get(&JSONValue::String { s: identifier.as_bytes(), needs_escaping: false }).unwrap().clone()
@@ -18,7 +21,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     panic!("Error: Object identifier index can only be used on values of type Object; tried to get property {} of {}", identifier, val)
                 }
             })),
-        Filter::ArrayIndex { index } => 
+        Filter::ArrayIndex { index } =>
             Box::new(values.map(move |val| -> JSONValue {
                 if let JSONValue::Array(contents) = val {
                     contents[*index].clone()
@@ -26,7 +29,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     panic!("Error: Array index can only be used on values of type Array; got {}", val)
                 }
             })),
-        Filter::Slice { start, end, optional } => 
+        Filter::Slice { start, end, optional } =>
             Box::new(values.filter_map(move |val| -> Option<Box<dyn Iterator<Item=JSONValue>>> {
                 if JSONValue::Null == val && *optional {
                     None
@@ -67,7 +70,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                                         .expect(&format!("Cannot get slice of {}", val))
                                 ))
                             }
-                        } else { 
+                        } else {
                             panic!("Cannot get slice of {}", val);
                         }
                     )))
@@ -86,7 +89,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                 })
                 .flatten())
         },
-        Filter::Pipe(filters) => 
+        Filter::Pipe(filters) =>
             Box::new(values.map(move |val| {
                 let mut result: Box<dyn 'a + Iterator<Item=JSONValue<'a>>> = Box::new(std::iter::once(val));
 
@@ -149,7 +152,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
         Filter::KeysUnsorted => Box::new(values.map(keys).flatten()),
         Filter::Map(pred) => Box::new(values.map(move |val| -> JSONValue {
             match val {
-                JSONValue::Array(arr) => 
+                JSONValue::Array(arr) =>
                     JSONValue::Array(Rc::new(
                         arr.iter()
                             .map(|v| apply_filter(pred, std::iter::once(v.clone())))
@@ -199,7 +202,7 @@ pub fn apply_filter<'a>(filter: &'a Filter<'a>, values: impl 'a + Iterator<Item=
                     return JSONValue::Bool(contents.as_ref().0.contains_key(&key));
                 }
             }
-            
+
             if let Some(key) = key.as_int() {
                 if let JSONValue::Array(contents) = val {
                     return JSONValue::Bool((key as usize) < contents.len());
@@ -294,16 +297,28 @@ fn slice(string: &str, start: &Option<usize>, end: &Option<usize>) -> Result<Str
     }
 }
 
-fn applied_to_combinations<'a>(values: impl 'a + Iterator<Item=JSONValue<'a>>, left: &'a Filter<'a>, right: &'a Filter<'a>, func: fn((JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a>) -> Box<dyn 'a + Iterator<Item=JSONValue<'a>>> {
-    Box::new(values.map(move |val| {
-        let left_vals = apply_filter(left, std::iter::once(val.clone()));
-        let right_vals = apply_filter(right, std::iter::once(val.clone()));
+fn applied_to_combinations<'a>(
+    values: impl 'a + Iterator<Item = JSONValue<'a>>,
+    left: &'a Filter<'a>,
+    right: &'a Filter<'a>,
+    func: fn((JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a>,
+) -> Box<dyn 'a + Iterator<Item = JSONValue<'a>>> {
+    Box::new(
+        values
+            .map(move |val| {
+                let left_vals = apply_filter(left, std::iter::once(val.clone()));
+                let right_vals = apply_filter(right, std::iter::once(val.clone()));
 
-        combinations(left_vals, right_vals).map(func)
-    }).flatten())
+                combinations(left_vals, right_vals).map(func)
+            })
+            .flatten(),
+    )
 }
 
-fn combinations<'a>(a: impl Iterator<Item=JSONValue<'a>>, b: impl Iterator<Item=JSONValue<'a>>) -> impl Iterator<Item=(JSONValue<'a>, JSONValue<'a>)> {
+fn combinations<'a>(
+    a: impl Iterator<Item = JSONValue<'a>>,
+    b: impl Iterator<Item = JSONValue<'a>>,
+) -> impl Iterator<Item = (JSONValue<'a>, JSONValue<'a>)> {
     let vec_a = a.collect::<Vec<JSONValue>>();
     let vec_b = b.collect::<Vec<JSONValue>>();
 
@@ -330,15 +345,13 @@ fn combinations<'a>(a: impl Iterator<Item=JSONValue<'a>>, b: impl Iterator<Item=
 
 fn keys<'a>(val: JSONValue<'a>) -> Vec<JSONValue<'a>> {
     match val {
-        JSONValue::Object(map) => {
-            map.as_ref().0.keys().cloned().collect()
-        },
-        JSONValue::Array(arr) => 
-            (0..arr.len()).map(|i| JSONValue::Integer(i as i64)).collect(),
-        _ => panic!("Cannot get keys from value {}", val)
+        JSONValue::Object(map) => map.as_ref().0.keys().cloned().collect(),
+        JSONValue::Array(arr) => (0..arr.len())
+            .map(|i| JSONValue::Integer(i as i64))
+            .collect(),
+        _ => panic!("Cannot get keys from value {}", val),
     }
 }
-
 
 fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     let (a, b) = vals;
@@ -348,13 +361,13 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
             return JSONValue::Integer(a + b);
         }
     }
-    
+
     if let Some(a) = a.as_float() {
         if let Some(b) = b.as_float() {
             return JSONValue::Float(a + b);
         }
     }
-    
+
     if a == JSONValue::Null {
         return b.clone();
     }
@@ -363,17 +376,32 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         return a.clone();
     }
 
-    if let JSONValue::String { s: a, needs_escaping: _ } = a {
-        if let JSONValue::String { s: b, needs_escaping: _ } = b {
+    if let JSONValue::String {
+        s: a,
+        needs_escaping: _,
+    } = a
+    {
+        if let JSONValue::String {
+            s: b,
+            needs_escaping: _,
+        } = b
+        {
             let a = std::str::from_utf8(a).unwrap();
             let b = std::str::from_utf8(b).unwrap();
 
             return JSONValue::AllocatedString(Rc::new(String::from(a) + b));
         }
 
-        panic!("Cannot add values {} and {}", JSONValue::String { s: a.clone(), needs_escaping: false }, b);
+        panic!(
+            "Cannot add values {} and {}",
+            JSONValue::String {
+                s: a.clone(),
+                needs_escaping: false
+            },
+            b
+        );
     }
-    
+
     if let JSONValue::Array(a) = a {
         if let JSONValue::Array(b) = b {
             let mut result = a.as_ref().clone();
@@ -383,16 +411,24 @@ fn add<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
             return JSONValue::Array(Rc::new(result));
         }
 
-        panic!("Cannot add values {} and {}", JSONValue::Array(a.clone()), b);
+        panic!(
+            "Cannot add values {} and {}",
+            JSONValue::Array(a.clone()),
+            b
+        );
     }
 
     if let JSONValue::Object(a) = &a {
         if let JSONValue::Object(b) = &b {
             return JSONValue::Object(Rc::new((
-                a.as_ref().0.iter().chain(b.as_ref().0.iter())
+                a.as_ref()
+                    .0
+                    .iter()
+                    .chain(b.as_ref().0.iter())
                     .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect()
-            , None)));
+                    .collect(),
+                None,
+            )));
         }
     }
 
@@ -413,14 +449,15 @@ fn subtract<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
             return JSONValue::Float(a - b);
         }
     }
-    
+
     if let JSONValue::Array(a) = &a {
         if let JSONValue::Array(b) = b {
             return JSONValue::Array(Rc::new(
-                a.as_ref().iter()
+                a.as_ref()
+                    .iter()
                     .filter(|v| !b.as_ref().iter().any(|other| other == *v))
                     .cloned()
-                    .collect()
+                    .collect(),
             ));
         }
     }
@@ -443,7 +480,11 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    if let JSONValue::String { s: a, needs_escaping: _ } = &a {
+    if let JSONValue::String {
+        s: a,
+        needs_escaping: _,
+    } = &a
+    {
         if let Some(b) = b.as_int() {
             return repeated_str(std::str::from_utf8(a).unwrap(), b);
         }
@@ -452,7 +493,11 @@ fn multiply<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
             return repeated_str(a, b);
         }
     } else if let Some(a) = a.as_int() {
-        if let JSONValue::String { s: b, needs_escaping: _ } = b {
+        if let JSONValue::String {
+            s: b,
+            needs_escaping: _,
+        } = b
+        {
             return repeated_str(std::str::from_utf8(b).unwrap(), a);
         } else if let JSONValue::AllocatedString(b) = b {
             return repeated_str(&b, a);
@@ -482,7 +527,10 @@ fn repeated_str<'a, 'b>(s: &'a str, n: i64) -> JSONValue<'b> {
     }
 }
 
-fn merge_objects_recursive<'a: 'b, 'b>(a: &'b FxHashMap<JSONValue<'a>,JSONValue<'a>>, b: &'b FxHashMap<JSONValue<'a>, JSONValue<'a>>) -> JSONValue<'a> {
+fn merge_objects_recursive<'a: 'b, 'b>(
+    a: &'b FxHashMap<JSONValue<'a>, JSONValue<'a>>,
+    b: &'b FxHashMap<JSONValue<'a>, JSONValue<'a>>,
+) -> JSONValue<'a> {
     let mut result_map = HashMap::with_hasher(BuildHasherDefault::default());
 
     for (key, value) in a.iter() {
@@ -492,7 +540,10 @@ fn merge_objects_recursive<'a: 'b, 'b>(a: &'b FxHashMap<JSONValue<'a>,JSONValue<
     for (key, value) in b.iter() {
         if let Some(JSONValue::Object(contents_a)) = result_map.get(key).cloned() {
             if let JSONValue::Object(contents_b) = value {
-                result_map.insert(key.clone(), merge_objects_recursive(&contents_a.as_ref().0, &contents_b.as_ref().0));
+                result_map.insert(
+                    key.clone(),
+                    merge_objects_recursive(&contents_a.as_ref().0, &contents_b.as_ref().0),
+                );
                 continue;
             }
         }
@@ -520,32 +571,41 @@ fn divide<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
         }
     }
 
-    if let JSONValue::String { s: a, needs_escaping: ane } = &a {
+    if let JSONValue::String {
+        s: a,
+        needs_escaping: ane,
+    } = &a
+    {
         if let Some((b, bne)) = b.as_str() {
             return JSONValue::Array(Rc::new(
-                std::str::from_utf8(a).unwrap().split(b)
-                    .map(|s| JSONValue::String { s: s.as_bytes(), needs_escaping: *ane || bne })
-                    .collect()
+                std::str::from_utf8(a)
+                    .unwrap()
+                    .split(b)
+                    .map(|s| JSONValue::String {
+                        s: s.as_bytes(),
+                        needs_escaping: *ane || bne,
+                    })
+                    .collect(),
             ));
         }
     }
 
     if let JSONValue::AllocatedString(a) = &a {
         if let Some((b, bne)) = b.as_str() {
-            return JSONValue::Array(Rc::new(
-                if bne {
-                    let b: String = decoded_char_indices_iter(b.as_bytes()).map(|(_, c)| c).collect();
-                    let b = b.as_str();
+            return JSONValue::Array(Rc::new(if bne {
+                let b: String = decoded_char_indices_iter(b.as_bytes())
+                    .map(|(_, c)| c)
+                    .collect();
+                let b = b.as_str();
 
-                    a.split(b)
-                        .map(|s| JSONValue::AllocatedString(Rc::new(String::from(s))))
-                        .collect()
-                } else {
-                    a.split(b)
-                        .map(|s| JSONValue::AllocatedString(Rc::new(String::from(s))))
-                        .collect()
-                }
-            ));
+                a.split(b)
+                    .map(|s| JSONValue::AllocatedString(Rc::new(String::from(s))))
+                    .collect()
+            } else {
+                a.split(b)
+                    .map(|s| JSONValue::AllocatedString(Rc::new(String::from(s))))
+                    .collect()
+            }));
         }
     }
 
@@ -644,21 +704,16 @@ fn or<'a>(vals: (JSONValue<'a>, JSONValue<'a>)) -> JSONValue<'a> {
     panic!("Cannot apply 'or' to values {} and {}", a, b);
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::{filter_parser, json_parser};
     use super::apply_filter;
+    use crate::{filter_parser, json_parser};
 
     #[test]
     fn property_access_1() {
-        test_filter(
-            "{ \"foo\": 12, \"bar\": \"hello\" }",
-            ".foo",
-            "12"
-        );
+        test_filter("{ \"foo\": 12, \"bar\": \"hello\" }", ".foo", "12");
     }
-    
+
     #[test]
     fn property_access_2() {
         test_filter(
@@ -669,7 +724,7 @@ mod tests {
                 }
             }",
             ".bar.stuff",
-            "false"
+            "false",
         );
     }
 
@@ -681,10 +736,10 @@ mod tests {
                 \"bar\": [ 0, 1, 2 ]
             }",
             ".bar.[1]",
-            "1"
+            "1",
         );
     }
-    
+
     #[test]
     fn property_access_and_index_2() {
         test_filter(
@@ -693,7 +748,7 @@ mod tests {
                 \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
             }",
             ".bar[4]",
-            "4"
+            "4",
         );
     }
 
@@ -705,10 +760,10 @@ mod tests {
                 \"bar\": [ 0, 1, 2 ]
             }",
             ".bar.[]",
-            "0 1 2"
+            "0 1 2",
         );
     }
-    
+
     #[test]
     fn property_access_and_slice_1() {
         test_filter(
@@ -717,10 +772,10 @@ mod tests {
                 \"bar\": [ 0, 1, 2 ]
             }",
             ".bar[1:]",
-            "[1, 2]"
+            "[1, 2]",
         );
     }
-    
+
     #[test]
     fn property_access_and_slice_2() {
         test_filter(
@@ -729,10 +784,10 @@ mod tests {
                 \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
             }",
             ".bar[2:4]",
-            "[2, 3]"
+            "[2, 3]",
         );
     }
-    
+
     #[test]
     fn property_access_and_slice_3() {
         test_filter(
@@ -741,10 +796,10 @@ mod tests {
                 \"bar\": [ 0, 1, 2, 3, 4, 5, 6 ]
             }",
             ".bar[:4]",
-            "[0, 1, 2, 3]"
+            "[0, 1, 2, 3]",
         );
     }
-    
+
     #[test]
     fn property_access_and_math() {
         test_filter(
@@ -756,16 +811,13 @@ mod tests {
             "{
                 \"foo\": 12,
                 \"bar\": 13
-            }")
+            }",
+        )
     }
 
     #[test]
     fn string_slice() {
-        test_filter(
-            "\"abcdefghi\"",
-            ".[2:4]",
-            "\"cd\""
-        );
+        test_filter("\"abcdefghi\"", ".[2:4]", "\"cd\"");
     }
 
     #[test]
@@ -777,17 +829,13 @@ mod tests {
                 { \"foo\": 3 }
             ]",
             "map(.foo)",
-            "[1, 2, 3]"
+            "[1, 2, 3]",
         );
     }
 
     #[test]
     fn math_1() {
-        test_filter(
-            "[1, 2, 3]",
-            "map(.+1)",
-            "[2, 3, 4]"
-        );
+        test_filter("[1, 2, 3]", "map(.+1)", "[2, 3, 4]");
     }
 
     #[test]
@@ -805,7 +853,7 @@ mod tests {
         test_filter(
             "[\"a\", \"b\", \"c\"]",
             "map(. + \"d\")",
-            "[\"ad\", \"bd\", \"cd\"]"
+            "[\"ad\", \"bd\", \"cd\"]",
         );
     }
 
@@ -817,17 +865,13 @@ mod tests {
                 \"bar\": [ 0, 1, 2 ]
             }",
             "keys",
-            "[ \"bar\", \"foo\" ]"
+            "[ \"bar\", \"foo\" ]",
         );
     }
 
     #[test]
     fn string_slice_unicode() {
-        test_filter(
-            "\"\\u0001hello world\"", 
-            ".[1:]", 
-            "\"hello world\""
-        );
+        test_filter("\"\\u0001hello world\"", ".[1:]", "\"hello world\"");
     }
 
     #[test]
@@ -843,7 +887,7 @@ mod tests {
                 [ \"foo\" ]
                 [ \"foo\" ]
                 [ \"foo\" ]
-            "
+            ",
         );
     }
 
@@ -860,9 +904,10 @@ mod tests {
     #[test]
     fn alternative_operator() {
         test_filter(
-            "[ null, 12, 0, \"\", false ]", 
-            "map(. // \"ALTERNATIVE\")", 
-            "[ \"ALTERNATIVE\", 12, 0, \"\", \"ALTERNATIVE\" ]")
+            "[ null, 12, 0, \"\", false ]",
+            "map(. // \"ALTERNATIVE\")",
+            "[ \"ALTERNATIVE\", 12, 0, \"\", \"ALTERNATIVE\" ]",
+        )
     }
 
     #[test]
@@ -873,8 +918,9 @@ mod tests {
             { \"foo\": {
                 \"bar\": 12
             } }",
-            ".foo?.bar", 
-            "null 12" );
+            ".foo?.bar",
+            "null 12",
+        );
     }
 
     #[test]
@@ -915,7 +961,11 @@ mod tests {
 
     #[test]
     fn type_name() {
-        test_filter("[ false, null, {}, [], 12 ]", "map(type)", "[ \"boolean\", \"null\", \"object\", \"array\", \"number\" ]")
+        test_filter(
+            "[ false, null, {}, [], 12 ]",
+            "map(type)",
+            "[ \"boolean\", \"null\", \"object\", \"array\", \"number\" ]",
+        )
     }
 
     #[test]
@@ -943,7 +993,8 @@ mod tests {
         test_filter(
             "[[1, 2, 4], [1, 2, 3], [2, 3, 4]]",
             "sort",
-            "[[1, 2, 3], [1, 2, 4], [2, 3, 4]]")
+            "[[1, 2, 3], [1, 2, 4], [2, 3, 4]]",
+        )
     }
 
     #[test]
@@ -951,7 +1002,8 @@ mod tests {
         test_filter(
             "[{\"foo\":4, \"bar\":10}, {\"foo\":3, \"bar\":100}, {\"foo\":2, \"bar\":1}]",
             "sort",
-            "[{\"foo\":2, \"bar\":1}, {\"foo\":4, \"bar\":10}, {\"foo\":3, \"bar\":100}]")
+            "[{\"foo\":2, \"bar\":1}, {\"foo\":4, \"bar\":10}, {\"foo\":3, \"bar\":100}]",
+        )
     }
 
     #[test]
@@ -959,7 +1011,8 @@ mod tests {
         test_filter(
             "[ {\"k\": {\"a\": 1, \"b\": 2}}, {\"k\": {\"a\": 0,\"c\": 3}} ]",
             ".[0] * .[1]",
-            "{\"k\": {\"a\": 0, \"b\": 2, \"c\": 3}}")
+            "{\"k\": {\"a\": 0, \"b\": 2, \"c\": 3}}",
+        )
     }
 
     #[test]
@@ -967,7 +1020,8 @@ mod tests {
         test_filter(
             "\"foobarfoobarfoo\"",
             ". / \"bar\"",
-            "[ \"foo\", \"foo\", \"foo\" ]")
+            "[ \"foo\", \"foo\", \"foo\" ]",
+        )
     }
 
     #[test]
@@ -980,8 +1034,8 @@ mod tests {
         let filter = filter_parser::parse(filter).unwrap();
         println!("{:?}", filter);
         let expected = json_parser::parse(output_json.as_bytes(), false).map(|r| r.unwrap());
-        apply_filter(&filter, input).zip(expected).for_each(|(r, e)| {
-            assert_eq!(r, e)
-        });
+        apply_filter(&filter, input)
+            .zip(expected)
+            .for_each(|(r, e)| assert_eq!(r, e));
     }
 }
