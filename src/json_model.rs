@@ -213,8 +213,8 @@ pub fn decoded_slice(raw: &[u8], start: Option<usize>, end: Option<usize>) -> &s
     }
 }
 
-fn decode_unicode(digits: &str) -> char {
-    std::char::from_u32(u32::from_str_radix(digits, 16).unwrap()).unwrap()
+fn decode_unicode(digits: &str) -> Option<char> {
+    std::char::from_u32(u32::from_str_radix(digits, 16).unwrap())
 }
 
 fn format_radix(mut x: u32, radix: u32) -> String {
@@ -256,10 +256,8 @@ pub fn decoded_char_indices_iter<'a>(raw: &'a [u8]) -> impl 'a + Iterator<Item =
                     Some((current_index, ESCAPE_CHAR_VALUES[i]))
                 } else if directive == 'u' {
                     index += 6;
-                    Some((
-                        current_index,
-                        decode_unicode(&s[current_index + 2..current_index + 6]),
-                    ))
+                    decode_unicode(&s[current_index + 2..current_index + 6])
+                        .map(|c| (current_index, c))
                 } else {
                     panic!("Encountered unexpected character escape \\{}", directive)
                 }
